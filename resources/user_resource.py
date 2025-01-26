@@ -1,4 +1,3 @@
-# resources/user_resource.py
 from flask import Blueprint, request, jsonify
 from werkzeug.security import generate_password_hash
 from db import db
@@ -52,13 +51,9 @@ def register_user():
     }), 201
 
 @user_bp.route("/profile", methods=["GET"])
-@jwt_required()  # <-- Se requiere un access token válido
+@jwt_required()
 def get_profile():
-    """
-    Retorna el perfil del usuario que está actualmente autenticado.
-    """
     current_user_id = get_jwt_identity()
-    # Aquí podrías hacer un query a la BD para obtener la info del user
     return jsonify({
         "message": f"Este es el perfil del usuario con ID: {current_user_id}"
     }), 200

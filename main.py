@@ -1,4 +1,3 @@
-# main.py
 from flask import Flask
 from flask_migrate import Migrate
 from flask_cors import CORS
@@ -9,6 +8,9 @@ from config import Config
 from db import db
 from resources.user_resource import user_bp
 from resources.auth_resource import auth_bp
+from resources.transaction_resource import transaction_bp
+from resources.payment_type_resource import payment_type_bp
+
 
 def create_app():
     app = Flask(__name__)
@@ -18,11 +20,12 @@ def create_app():
     Migrate(app, db)
     
     CORS(app)
-    jwt = JWTManager(app)  # Lee la configuración de JWT definida en Config
+    jwt = JWTManager(app)
 
-    # Registrar Blueprints
     app.register_blueprint(user_bp)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(payment_type_bp)
+    app.register_blueprint(transaction_bp)
 
     @app.before_first_request
     def create_tables():
