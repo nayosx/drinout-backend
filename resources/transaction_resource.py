@@ -15,13 +15,20 @@ transaction_list_schema = TransactionSchema(many=True)
 @transaction_bp.route("", methods=["GET"])
 @jwt_required()
 def get_all_transactions():
-    user_id = request.args.get("user_id", type=int)
+    user_id = request.args.get("user_id", default=None)
     start_date_str = request.args.get("start_date")
     end_date_str = request.args.get("end_date")
+
     if start_date_str and end_date_str:
         try:
-            start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
-            end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
+            parsed_start = datetime.strptime(start_date_str, "%Y-%m-%d")
+            parsed_end = datetime.strptime(end_date_str, "%Y-%m-%d")
+
+            # Ajustar start_date a 00:00:00
+            start_date = parsed_start.replace(hour=0, minute=0, second=0, microsecond=0)
+            # Ajustar end_date a 23:59:59
+            end_date = parsed_end.replace(hour=23, minute=59, second=59, microsecond=999999)
+
         except ValueError:
             return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
     else:
@@ -29,13 +36,26 @@ def get_all_transactions():
         year = now.year
         month = now.month
         _, last_day_of_month = calendar.monthrange(year, month)
-        start_date = datetime(year, month, 1, 0, 0, 0)
+
+        # Mes actual, del 1 al último día
+        start_date = datetime(year, month, 1, 0, 0, 0, 0)
         end_date = datetime(year, month, last_day_of_month, 23, 59, 59, 999999)
+
     query = Transaction.query
-    if user_id:
+
+    if user_id == "":
+        user_id = None
+
+    if user_id is not None:
+        user_id = int(user_id)
         query = query.filter_by(user_id=user_id)
-    query = query.filter(Transaction.created_at >= start_date, Transaction.created_at <= end_date)
+
+    query = query.filter(
+        Transaction.created_at >= start_date,
+        Transaction.created_at <= end_date
+    )
     transactions = query.all()
+
     return jsonify(transaction_list_schema.dump(transactions)), 200
 
 @transaction_bp.route("", methods=["POST"])
