@@ -4,6 +4,10 @@ from db import db
 from models.work_session import WorkSession
 from schemas.work_session_schema import WorkSessionSchema
 from datetime import datetime
+import pytz
+from sqlalchemy.sql import func
+
+SV_TZ = pytz.timezone("America/El_Salvador")
 
 work_session_bp = Blueprint("work_session_bp", __name__, url_prefix="/work_sessions")
 work_session_schema = WorkSessionSchema()
@@ -12,44 +16,35 @@ work_session_list_schema = WorkSessionSchema(many=True)
 @work_session_bp.route("/start", methods=["POST"])
 @jwt_required()
 def start_work_session():
-    """Inicia una jornada de trabajo"""
     user_id = get_jwt_identity()
 
     existing_session = WorkSession.query.filter_by(user_id=user_id, status="IN_PROGRESS").first()
     if existing_session:
         return jsonify({"message": "Ya tienes una jornada en curso."}), 400
 
-    new_session = WorkSession(user_id=user_id)
+    new_session = WorkSession(user_id=user_id, login_time=datetime.now(SV_TZ).replace(microsecond=0))
     db.session.add(new_session)
     db.session.commit()
-    return jsonify({
-        "message": "Jornada iniciada",
-        "session": work_session_schema.dump(new_session)
-    }), 201
+    return jsonify({"message": "Jornada iniciada", "session": work_session_schema.dump(new_session)}), 201
 
 @work_session_bp.route("/end", methods=["POST"])
 @jwt_required()
 def end_work_session():
-    """Finaliza la jornada de trabajo de un usuario"""
     user_id = get_jwt_identity()
 
     session = WorkSession.query.filter_by(user_id=user_id, status="IN_PROGRESS").first()
     if not session:
         return jsonify({"message": "No tienes una jornada activa."}), 400
 
-    session.logout_time = func.now()
+    session.logout_time = datetime.now(SV_TZ).replace(microsecond=0)
     session.status = "COMPLETED"
     db.session.commit()
     
-    return jsonify({
-        "message": "Jornada finalizada",
-        "session": work_session_schema.dump(session)
-    }), 200
+    return jsonify({"message": "Jornada finalizada", "session": work_session_schema.dump(session)}), 200
 
 @work_session_bp.route("/force_end", methods=["POST"])
 @jwt_required()
 def force_end_work_session():
-    """Cierra la jornada de trabajo de un usuario con un comentario (Forzado por Admin)"""
     user_id = request.json.get("user_id")
     comments = request.json.get("comments", "")
 
@@ -60,20 +55,16 @@ def force_end_work_session():
     if not session:
         return jsonify({"error": "No active session found for this user"}), 404
 
-    session.logout_time = func.now()
+    session.logout_time = datetime.now(SV_TZ).replace(microsecond=0)
     session.status = "COMPLETED"
     session.comments = comments
     db.session.commit()
 
-    return jsonify({
-        "message": "Work session forcibly closed",
-        "session": work_session_schema.dump(session)
-    }), 200
+    return jsonify({"message": "Work session forcibly closed", "session": work_session_schema.dump(session)}), 200
 
 @work_session_bp.route("", methods=["GET"])
 @jwt_required()
 def get_work_sessions():
-    """Lista jornadas de trabajo con filtro opcional por usuario y fechas"""
     user_id = request.args.get("user_id", type=int)
     start_date_str = request.args.get("start_date")
     end_date_str = request.args.get("end_date")
@@ -85,12 +76,8 @@ def get_work_sessions():
 
     if start_date_str and end_date_str:
         try:
-            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
-            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").replace(
-                hour=23, minute=59, second=59, microsecond=999999
-            )
+            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").replace(hour=0, minute=0, second=0, microsecond=0)
+            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999999)
 
             query = query.filter(
                 WorkSession.login_time >= start_date,
@@ -102,3 +89,14 @@ def get_work_sessions():
     sessions = query.all()
     return jsonify(work_session_list_schema.dump(sessions)), 200
 
+@work_session_bp.route("/latest", methods=["GET"])
+@jwt_required()
+def get_latest_work_session():
+    user_id = get_jwt_identity()
+
+    session = WorkSession.query.filter_by(user_id=user_id).order_by(WorkSession.login_time.desc()).first()
+
+    if not session:
+        return jsonify({"message": "No hay sesiones registradas"}), 404
+
+    return jsonify({"session": work_session_schema.dump(session)}), 200
