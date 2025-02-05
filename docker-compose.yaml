@@ -1,37 +1,13 @@
 version: "3.9"
 
 services:
-  mariadb:
-    image: mariadb:latest
-    container_name: drinout_db
-    environment:
-      MARIADB_ROOT_PASSWORD: "root_password"
-      MARIADB_DATABASE: "my_database"
-      MARIADB_USER: "my_user"
-      MARIADB_PASSWORD: "my_password"
-    ports:
-      - "3306:3306"
-    volumes:
-      - mariadb_data:/var/lib/mysql
-      - ./init-scripts:/docker-entrypoint-initdb.d:ro
-    restart: always
-
   drinout:
     build: .
     container_name: drinout
-    depends_on:
-      mariadb:
-        condition: service_healthy
     ports:
       - "5000:5000"
-    environment:
-      PYTHON_VERSION: "3.11"
-      DB_HOST: "mariadb"
-      DB_USER: "my_user"
-      DB_PASSWORD: "my_password"
-      DB_NAME: "my_database"
-      SECRET_KEY: "mysuperawesome"
-      JWT_SECRET_KEY: "jwtawesometoken"
+    env_file:
+      - .env
     volumes:
       - .:/app
     working_dir: /app
@@ -42,6 +18,3 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
-volumes:
-  mariadb_data:

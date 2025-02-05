@@ -1,20 +1,14 @@
-# Usar una imagen específica de Python 3
 FROM python:3.11
 
-# Establecer directorio de trabajo dentro del contenedor
 WORKDIR /app
 
-# Copiar el código fuente al contenedor
-COPY . /app
+COPY requirements.txt /app/
 
-# Actualizar pip y wheel
 RUN pip install --no-cache-dir --upgrade pip wheel
-
-# Instalar dependencias desde requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Exponer el puerto donde correrá la API Flask
+COPY . /app/
+
 EXPOSE 5000
 
-# Ejecutar la aplicación Flask al iniciar el contenedor
 CMD ["flask", "run", "--host=0.0.0.0", "--port=5000"]
