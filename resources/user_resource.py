@@ -30,6 +30,8 @@ def register_user():
     username = data["username"]
     password = data["password"]
     role_id = data["role_id"]
+    phone = data["phone"]
+    name = data["name"]
 
     existing_user = User.query.filter_by(username=username).first()
     if existing_user:
@@ -40,7 +42,9 @@ def register_user():
     new_user = User(
         username=username,
         password=hashed_password,
-        role_id=role_id
+        role_id=role_id,
+        phone=phone,
+        name=name
     )
 
     db.session.add(new_user)
