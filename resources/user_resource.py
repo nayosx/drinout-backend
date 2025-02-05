@@ -8,13 +8,14 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 user_bp = Blueprint("user_bp", __name__, url_prefix="/users")
 
 @user_bp.route("", methods=["GET"])
+@jwt_required()
 def get_users():
     users = User.query.all()
     user_schema = UserSchema(many=True)
     return jsonify(user_schema.dump(users)), 200
 
-
 @user_bp.route("/register", methods=["POST"])
+@jwt_required()
 def register_user():
     json_data = request.get_json()
     if not json_data:
