@@ -1,7 +1,7 @@
 services:
   drinout:
     build: .
-    container_name: drinout
+    container_name: drinout-back
     ports:
       - "5000:5000"
     env_file:
