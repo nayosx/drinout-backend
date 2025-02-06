@@ -86,6 +86,7 @@ def get_work_sessions():
         except ValueError:
             return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
 
+    query = query.order_by(WorkSession.id.desc())
     sessions = query.all()
     return jsonify(work_session_list_schema.dump(sessions)), 200
 
@@ -94,7 +95,7 @@ def get_work_sessions():
 def get_latest_work_session():
     user_id = get_jwt_identity()
 
-    session = WorkSession.query.filter_by(user_id=user_id).order_by(WorkSession.login_time.desc()).first()
+    session = WorkSession.query.filter_by(user_id=user_id).order_by(WorkSession.id.desc()).first()  # ✅ Ordenar por ID descendente
 
     if not session:
         return jsonify({"message": "No hay sesiones registradas"}), 404
