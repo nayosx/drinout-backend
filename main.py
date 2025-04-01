@@ -1,3 +1,5 @@
+import os
+from dotenv import load_dotenv
 from flask import Flask
 from flask_migrate import Migrate
 from flask_cors import CORS
@@ -12,13 +14,15 @@ from resources.payment_type_resource import payment_type_bp
 from resources.work_session_resource import work_session_bp
 from resources.test_resource import test_bp
 
+load_dotenv()  # Carga las variables de entorno desde el archivo .env
+
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
     db.init_app(app)
     Migrate(app, db)
-    
+
     CORS(app)
     jwt = JWTManager(app)
 
@@ -42,4 +46,6 @@ def create_app():
 
 if __name__ == "__main__":
     flask_app = create_app()
-    flask_app.run(debug=True, host="0.0.0.0", port=5000)
+    port = int(os.getenv("PORT", 5000))
+    debug = os.getenv("DEBUG", "False").lower() in ("true", "1", "t")
+    flask_app.run(debug=debug, host="0.0.0.0", port=port)
