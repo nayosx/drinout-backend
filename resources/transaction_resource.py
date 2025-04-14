@@ -24,11 +24,9 @@ def get_all_transactions():
             parsed_start = datetime.strptime(start_date_str, "%Y-%m-%d")
             parsed_end = datetime.strptime(end_date_str, "%Y-%m-%d")
 
-            # Ajustar start_date a 00:00:00
             start_date = parsed_start.replace(hour=0, minute=0, second=0, microsecond=0)
-            # Ajustar end_date a 23:59:59
-            end_date = parsed_end.replace(hour=23, minute=59, second=59, microsecond=999999)
 
+            end_date = parsed_end.replace(hour=23, minute=59, second=59, microsecond=999999)
         except ValueError:
             return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
     else:
@@ -37,7 +35,6 @@ def get_all_transactions():
         month = now.month
         _, last_day_of_month = calendar.monthrange(year, month)
 
-        # Mes actual, del 1 al último día
         start_date = datetime(year, month, 1, 0, 0, 0, 0)
         end_date = datetime(year, month, last_day_of_month, 23, 59, 59, 999999)
 
@@ -54,8 +51,10 @@ def get_all_transactions():
         Transaction.created_at >= start_date,
         Transaction.created_at <= end_date
     )
-    transactions = query.all()
 
+    query = query.order_by(Transaction.created_at.desc())
+    
+    transactions = query.all()
     return jsonify(transaction_list_schema.dump(transactions)), 200
 
 @transaction_bp.route("", methods=["POST"])

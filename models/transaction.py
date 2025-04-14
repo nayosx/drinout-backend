@@ -12,8 +12,8 @@ class Transaction(db.Model):
     payment_type_id = Column(Integer, ForeignKey("payment_types.id"), nullable=False)
     detail = db.Column(TEXT, nullable=True)
     amount = Column(DECIMAL(10,2), nullable=False)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(True), default=func.now())
+    updated_at = Column(DateTime(True), default=func.now(), onupdate=func.now())
 
     # Relaciones
     user = relationship("User", backref="transactions", lazy=True)

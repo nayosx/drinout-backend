@@ -13,6 +13,7 @@ from resources.transaction_resource import transaction_bp
 from resources.payment_type_resource import payment_type_bp
 from resources.work_session_resource import work_session_bp
 from resources.test_resource import test_bp
+from resources.task_resource import task_bp
 
 load_dotenv()  # Carga las variables de entorno desde el archivo .env
 
@@ -37,6 +38,7 @@ def create_app():
     app.register_blueprint(transaction_bp)
     app.register_blueprint(work_session_bp)
     app.register_blueprint(test_bp)
+    app.register_blueprint(task_bp)
 
     @app.before_first_request
     def create_tables():
