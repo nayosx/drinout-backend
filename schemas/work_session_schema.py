@@ -1,6 +1,7 @@
 from marshmallow import Schema, fields
+from schemas.base import LocalDateTimeMixin
 
-class WorkSessionSchema(Schema):
+class WorkSessionSchema(LocalDateTimeMixin, Schema):
     id = fields.Int(dump_only=True)
     user_id = fields.Int(required=True)
     login_time = fields.DateTime(dump_only=True)

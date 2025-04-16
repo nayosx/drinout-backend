@@ -32,13 +32,21 @@ def create_task():
     if not user:
         return jsonify({"error": f"User with id {data['user_id']} not found"}), 404
 
+    ws_id = data.get("work_session_id")
+    if ws_id is not None:
+        from models.work_session import WorkSession
+        if not WorkSession.query.get(ws_id):
+            return jsonify({"error": f"Work session with id {ws_id} not found"}), 404
+
     new_task = Task(
         user_id=data["user_id"],
+        work_session_id=ws_id,
         description=data["description"]
     )
     db.session.add(new_task)
     db.session.commit()
-    return jsonify({"message": "Task created", "task": task_schema.dump(new_task)}), 201
+    return jsonify({"task": task_schema.dump(new_task)}), 201
+
 
 @task_bp.route("/<int:task_id>", methods=["GET"])
 @jwt_required()

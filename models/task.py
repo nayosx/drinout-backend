@@ -7,12 +7,14 @@ class Task(db.Model):
 
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    work_session_id = Column(Integer, ForeignKey("work_sessions.id"))
     description = Column(Text, nullable=False)
     created_at = Column(DateTime(True), default=func.now())
     updated_at = Column(DateTime(True), default=func.now(), onupdate=func.now())
 
     user = relationship("User", backref="tasks", lazy=True)
+    work_session = relationship("WorkSession", backref="tasks", lazy=True)
     views = relationship("TaskView", backref="task", lazy=True)
 
     def __repr__(self):
-        return f"<Task id={self.id} user_id={self.user_id}>"
+        return f"<Task id={self.id} user_id={self.user_id} work_session_id={self.work_session_id}>"

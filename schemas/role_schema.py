@@ -1,7 +1,8 @@
 # schemas/role_schema.py
 from marshmallow import Schema, fields
+from schemas.base import LocalDateTimeMixin
 
-class RoleSchema(Schema):
+class RoleSchema(LocalDateTimeMixin, Schema):
     id = fields.Int(dump_only=True)
     name = fields.Str(required=True)
     description = fields.Str(required=True)

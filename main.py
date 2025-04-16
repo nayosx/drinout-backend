@@ -4,9 +4,8 @@ from flask import Flask
 from flask_migrate import Migrate
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
-from sqlalchemy.sql import text
 from config import Config
-from db import db
+from db import db, init_db
 from resources.user_resource import user_bp
 from resources.auth_resource import auth_bp
 from resources.transaction_resource import transaction_bp
@@ -15,23 +14,15 @@ from resources.work_session_resource import work_session_bp
 from resources.test_resource import test_bp
 from resources.task_resource import task_bp
 
-load_dotenv()  # Carga las variables de entorno desde el archivo .env
+load_dotenv()
 
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
-
-    db.init_app(app)
+    init_db(app)
     Migrate(app, db)
-
     CORS(app)
-    jwt = JWTManager(app)
-
-    with app.app_context():
-        with db.engine.connect() as conn:
-            conn.execute(text("SET time_zone = '-6:00'"))
-            conn.commit()
-
+    JWTManager(app)
     app.register_blueprint(user_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(payment_type_bp)
