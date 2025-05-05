@@ -13,6 +13,8 @@ from resources.payment_type_resource import payment_type_bp
 from resources.work_session_resource import work_session_bp
 from resources.test_resource import test_bp
 from resources.task_resource import task_bp
+from resources.menu_resource import menu_bp
+from resources.role_resource import role_bp
 
 load_dotenv()
 
@@ -30,6 +32,8 @@ def create_app():
     app.register_blueprint(work_session_bp)
     app.register_blueprint(test_bp)
     app.register_blueprint(task_bp)
+    app.register_blueprint(menu_bp)
+    app.register_blueprint(role_bp)
 
     @app.before_first_request
     def create_tables():
