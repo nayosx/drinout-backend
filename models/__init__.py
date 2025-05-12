@@ -11,3 +11,4 @@ from .task import Task
 from .task_view import TaskView
 from .menu import Menu
 from .menu_roles import menu_roles
+from .transaction_category import TransactionCategory

@@ -10,6 +10,7 @@ class Transaction(db.Model):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     transaction_type = Column(Enum("IN","OUT"), nullable=False)
     payment_type_id = Column(Integer, ForeignKey("payment_types.id"), nullable=False)
+    category_id = Column(Integer, ForeignKey("transaction_category.id"), nullable=True)
     detail = db.Column(TEXT, nullable=True)
     amount = Column(DECIMAL(10,2), nullable=False)
     created_at = Column(DateTime(True), default=func.now())
@@ -18,6 +19,7 @@ class Transaction(db.Model):
     # Relaciones
     user = relationship("User", backref="transactions", lazy=True)
     payment_type = relationship("PaymentType", backref="transactions", lazy=True)
+    category = relationship("TransactionCategory", backref="transactions", lazy=True)
 
     def __repr__(self):
-        return f"<Transaction id={self.id} type={self.transaction_type} amount={self.amount}>"
+        return f"<Transaction id={self.id} type={self.transaction_type} amount={self.amount} category={self.category_id}>"

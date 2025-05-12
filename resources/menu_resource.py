@@ -34,6 +34,7 @@ def get_menus():
         return jsonify([]), 200
     menus_query = (
         Menu.query
+        .filter(Menu.show_in_sidebar == True)
         .filter(Menu.roles.any(Role.id.in_(allowed_roles)))
         .order_by(Menu.order)
         .all()
@@ -107,3 +108,24 @@ def remove_menu_from_role(menu_id, role_id):
         menu.roles.remove(role)
         db.session.commit()
     return jsonify({"message": "Role removed from menu"}), 200
+
+
+@menu_bp.route("/allwithroles", methods=["GET"])
+@jwt_required()
+def get_all_menu_roles():
+    menus = Menu.query.filter_by(show_in_sidebar=True).order_by(Menu.order).all()
+
+    result = [
+        {
+            "id": menu.id,
+            "label": menu.label,
+            "path": menu.path,
+            "show_in_sidebar": menu.show_in_sidebar,
+            "order": menu.order,
+            "roles": [role.id for role in menu.roles]
+        }
+        for menu in menus
+    ]
+
+    return jsonify(result), 200
+
