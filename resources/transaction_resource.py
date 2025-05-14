@@ -94,8 +94,8 @@ def create_transaction():
     if not p_type:
         return jsonify({"error": f"PaymentType with id {data['payment_type_id']} not found"}), 404
 
-    category = None
-    if "category_id" in data:
+    # Validar categoría solo si está presente y no es None
+    if "category_id" in data and data["category_id"] is not None:
         category = TransactionCategory.query.get(data["category_id"])
         if not category:
             return jsonify({"error": f"Category with id {data['category_id']} not found"}), 404
@@ -104,13 +104,18 @@ def create_transaction():
         user_id=data["user_id"],
         transaction_type=data["transaction_type"],
         payment_type_id=data["payment_type_id"],
-        category_id=data.get("category_id"),
+        category_id=data.get("category_id"),  # puede ser None y está bien
         detail=data.get("detail"),
         amount=data["amount"]
     )
+
     db.session.add(new_trans)
     db.session.commit()
-    return jsonify({"message": "Transaction created", "transaction": transaction_schema.dump(new_trans)}), 201
+
+    return jsonify({
+        "message": "Transaction created",
+        "transaction": transaction_schema.dump(new_trans)
+    }), 201
 
 
 @transaction_bp.route("/<int:transaction_id>", methods=["PUT"])
