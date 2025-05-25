@@ -131,32 +131,40 @@ def update_transaction(transaction_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-    if "user_id" in data:
+    if data.get("user_id") is not None:
         user = User.query.get(data["user_id"])
         if not user:
             return jsonify({"error": f"User with id {data['user_id']} not found"}), 404
         trans.user_id = data["user_id"]
 
-    if "transaction_type" in data:
-        trans.transaction_type = data["transaction_type"]
-
-    if "payment_type_id" in data:
+    if data.get("payment_type_id") is not None:
         p_type = PaymentType.query.get(data["payment_type_id"])
         if not p_type:
             return jsonify({"error": f"PaymentType with id {data['payment_type_id']} not found"}), 404
         trans.payment_type_id = data["payment_type_id"]
 
-    if "category_id" in data:
-        category = TransactionCategory.query.get(data["category_id"])
-        if not category:
-            return jsonify({"error": f"Category with id {data['category_id']} not found"}), 404
-        trans.category_id = data["category_id"]
+    new_type = data.get("transaction_type", trans.transaction_type)
+    trans.transaction_type = new_type
+
+    if new_type == "OUT":
+        if "category_id" in data:
+            if data["category_id"] is not None:
+                category = TransactionCategory.query.get(data["category_id"])
+                if not category:
+                    return jsonify({"error": f"Category with id {data['category_id']} not found"}), 404
+            trans.category_id = data["category_id"]
+    else:
+        if "category_id" in data:
+            trans.category_id = None
 
     if "detail" in data:
         trans.detail = data["detail"]
-
     if "amount" in data:
         trans.amount = data["amount"]
 
     db.session.commit()
-    return jsonify({"message": "Transaction updated", "transaction": transaction_schema.dump(trans)}), 200
+    return jsonify({
+        "message": "Transaction updated",
+        "transaction": transaction_schema.dump(trans)
+    }), 200
+
