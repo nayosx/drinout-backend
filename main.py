@@ -20,7 +20,6 @@ from resources.client import clients_bp
 from resources.client_address import addresses_bp
 from resources.client_phone import phones_bp
 
-
 load_dotenv()
 
 def create_app():
@@ -40,7 +39,6 @@ def create_app():
     app.register_blueprint(menu_bp)
     app.register_blueprint(role_bp)
     app.register_blueprint(transaction_category_bp)
-
     app.register_blueprint(clients_bp)
     app.register_blueprint(addresses_bp)
     app.register_blueprint(phones_bp)
@@ -51,8 +49,11 @@ def create_app():
 
     return app
 
+# OJO: Este objeto es el que mod_wsgi usará
+application = create_app()
+
 if __name__ == "__main__":
-    flask_app = create_app()
+    # Solo para uso local
     port = int(os.getenv("PORT", 5050))
     debug = os.getenv("DEBUG", "False").lower() in ("true", "1", "t")
-    flask_app.run(debug=debug, host="0.0.0.0", port=port)
+    application.run(debug=debug, host="0.0.0.0", port=port)
