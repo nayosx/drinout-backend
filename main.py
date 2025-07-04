@@ -16,6 +16,10 @@ from resources.task_resource import task_bp
 from resources.menu_resource import menu_bp
 from resources.role_resource import role_bp
 from resources.transaction_category_resource import transaction_category_bp
+from resources.client import clients_bp
+from resources.client_address import addresses_bp
+from resources.client_phone import phones_bp
+
 
 load_dotenv()
 
@@ -37,6 +41,10 @@ def create_app():
     app.register_blueprint(role_bp)
     app.register_blueprint(transaction_category_bp)
 
+    app.register_blueprint(clients_bp)
+    app.register_blueprint(addresses_bp)
+    app.register_blueprint(phones_bp)
+
     @app.before_first_request
     def create_tables():
         db.create_all()
@@ -45,6 +53,6 @@ def create_app():
 
 if __name__ == "__main__":
     flask_app = create_app()
-    port = int(os.getenv("PORT", 5000))
+    port = int(os.getenv("PORT", 5050))
     debug = os.getenv("DEBUG", "False").lower() in ("true", "1", "t")
     flask_app.run(debug=debug, host="0.0.0.0", port=port)
