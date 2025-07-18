@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
 from db import db
 from models.client import ClientPhone
-from schemas.client import ClientPhoneSchema
+from schemas.client_schema import ClientPhoneSchema
 
 phones_bp = Blueprint("phones_bp", __name__, url_prefix="/client-phones")
 

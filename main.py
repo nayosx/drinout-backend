@@ -19,6 +19,10 @@ from resources.transaction_category_resource import transaction_category_bp
 from resources.client import clients_bp
 from resources.client_address import addresses_bp
 from resources.client_phone import phones_bp
+from resources.laundry_service_resource import laundry_service_bp
+from resources.laundry_delivery_resource import laundry_delivery_bp
+from resources.laundry_processing_step_resource import processing_step_bp
+
 
 load_dotenv()
 
@@ -27,7 +31,9 @@ def create_app():
     app.config.from_object(Config)
     init_db(app)
     Migrate(app, db)
-    CORS(app)
+    CORS(
+        app
+    )
     JWTManager(app)
     app.register_blueprint(user_bp)
     app.register_blueprint(auth_bp)
@@ -42,6 +48,9 @@ def create_app():
     app.register_blueprint(clients_bp)
     app.register_blueprint(addresses_bp)
     app.register_blueprint(phones_bp)
+    app.register_blueprint(laundry_service_bp)
+    app.register_blueprint(laundry_delivery_bp)
+    app.register_blueprint(processing_step_bp)
 
     @app.before_first_request
     def create_tables():
@@ -49,11 +58,9 @@ def create_app():
 
     return app
 
-# OJO: Este objeto es el que mod_wsgi usará
 application = create_app()
 
 if __name__ == "__main__":
-    # Solo para uso local
     port = int(os.getenv("PORT", 5050))
     debug = os.getenv("DEBUG", "False").lower() in ("true", "1", "t")
     application.run(debug=debug, host="0.0.0.0", port=port)

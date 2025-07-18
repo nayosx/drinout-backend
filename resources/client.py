@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
 from db import db
 from models.client import Client
-from schemas.client import (
+from schemas.client_schema import (
     ClientSchema,
     ClientShortSchema,
     ClientDetailSchema

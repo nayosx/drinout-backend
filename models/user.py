@@ -14,8 +14,15 @@ class User(db.Model):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
     role = relationship("Role", backref="users", lazy=True)
+
     name = Column(String(100), default="User Generic", nullable=False)
     phone = Column(String(20), default="7777-7777", nullable=False)
+
+    refresh_tokens = relationship(
+        "RefreshToken",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<User {self.username}>"

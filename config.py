@@ -16,5 +16,14 @@ class Config:
 
     SECRET_KEY = os.getenv("SECRET_KEY", "mysuperawesome")
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "jwtawesometoken")
-    JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=15)
-    JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=1)
+    
+    # Tiempo de expiración tokens
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=60)
+    JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
+
+"""     # Configuración para uso de cookies
+    JWT_TOKEN_LOCATION = ["cookies"]
+    JWT_COOKIE_SECURE = False  # Cambia a False si pruebas en localhost sin HTTPS
+    JWT_ACCESS_COOKIE_PATH = "/"
+    JWT_REFRESH_COOKIE_PATH = "/auth/refresh"
+    JWT_COOKIE_CSRF_PROTECT = False  # Si quieres protección CSRF, cámbialo a True """

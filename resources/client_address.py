@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
 from db import db
 from models.client import ClientAddress
-from schemas.client import ClientAddressSchema
+from schemas.client_schema import ClientAddressSchema
 
 addresses_bp = Blueprint("addresses_bp", __name__, url_prefix="/client-addresses")
 
@@ -12,7 +12,14 @@ address_list_schema = ClientAddressSchema(many=True)
 @addresses_bp.route("", methods=["GET"])
 @jwt_required()
 def get_addresses():
-    addresses = ClientAddress.query.order_by(ClientAddress.id).all()
+    client_id = request.args.get("client_id", type=int)
+
+    query = ClientAddress.query
+
+    if client_id is not None:
+        query = query.filter(ClientAddress.client_id == client_id)
+
+    addresses = query.order_by(ClientAddress.id).all()
     return jsonify(address_list_schema.dump(addresses)), 200
 
 @addresses_bp.route("/<int:address_id>", methods=["GET"])

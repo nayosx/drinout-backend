@@ -1,9 +1,10 @@
 from marshmallow import Schema, fields
+from schemas.base import LocalDateTimeMixin
 
 # ----------------------------
 # Cliente completo
 # ----------------------------
-class ClientSchema(Schema):
+class ClientSchema(LocalDateTimeMixin, Schema):
     id = fields.Int(dump_only=True)
     name = fields.Str(required=True)
     email = fields.Str()
@@ -17,14 +18,14 @@ class ClientSchema(Schema):
 # ----------------------------
 # Cliente resumen (solo id y name)
 # ----------------------------
-class ClientShortSchema(Schema):
+class ClientShortSchema(LocalDateTimeMixin, Schema):
     id = fields.Int(dump_only=True)
     name = fields.Str()
 
 # ----------------------------
 # Dirección completa (creación/edición)
 # ----------------------------
-class ClientAddressSchema(Schema):
+class ClientAddressSchema(LocalDateTimeMixin, Schema):
     id = fields.Int(dump_only=True)
     client_id = fields.Int(required=True)
     address_text = fields.Str(required=True)
@@ -38,7 +39,7 @@ class ClientAddressSchema(Schema):
 # ----------------------------
 # Dirección sin fechas de actualización
 # ----------------------------
-class ClientAddressNoUpdateSchema(Schema):
+class ClientAddressNoUpdateSchema(LocalDateTimeMixin, Schema):
     id = fields.Int(dump_only=True)
     client_id = fields.Int()
     address_text = fields.Str()
@@ -52,7 +53,7 @@ class ClientAddressNoUpdateSchema(Schema):
 # ----------------------------
 # Teléfono completo (creación/edición)
 # ----------------------------
-class ClientPhoneSchema(Schema):
+class ClientPhoneSchema(LocalDateTimeMixin, Schema):
     id = fields.Int(dump_only=True)
     client_id = fields.Int(required=True)
     phone_number = fields.Str(required=True)
@@ -63,7 +64,7 @@ class ClientPhoneSchema(Schema):
 # ----------------------------
 # Teléfono sin fechas de actualización
 # ----------------------------
-class ClientPhoneNoUpdateSchema(Schema):
+class ClientPhoneNoUpdateSchema(LocalDateTimeMixin, Schema):
     id = fields.Int(dump_only=True)
     client_id = fields.Int()
     phone_number = fields.Str()
@@ -74,7 +75,7 @@ class ClientPhoneNoUpdateSchema(Schema):
 # ----------------------------
 # Cliente detallado con relaciones
 # ----------------------------
-class ClientDetailSchema(Schema):
+class ClientDetailSchema(LocalDateTimeMixin, Schema):
     id = fields.Int(dump_only=True)
     name = fields.Str()
     email = fields.Str()

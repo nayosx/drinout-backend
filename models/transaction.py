@@ -15,11 +15,13 @@ class Transaction(db.Model):
     amount = Column(DECIMAL(10,2), nullable=False)
     created_at = Column(DateTime(True), default=func.now())
     updated_at = Column(DateTime(True), default=func.now(), onupdate=func.now())
+    client_id = db.Column(db.Integer, db.ForeignKey("clients.id"), nullable=True)
 
     # Relaciones
     user = relationship("User", backref="transactions", lazy=True)
     payment_type = relationship("PaymentType", backref="transactions", lazy=True)
     category = relationship("TransactionCategory", backref="transactions", lazy=True)
+    client = db.relationship("Client", backref="transactions")
 
     def __repr__(self):
         return f"<Transaction id={self.id} type={self.transaction_type} amount={self.amount} category={self.category_id}>"

@@ -17,8 +17,10 @@ class TransactionSchema(LocalDateTimeMixin, Schema):
     amount = fields.Decimal(as_string=True, required=True)
     created_at = fields.DateTime(dump_only=True)
     updated_at = fields.DateTime(dump_only=True)
+    client_id = fields.Int(allow_none=True)
+    client_name = fields.Str(allow_none=True)
 
-    # Campos extras para mostrar el nombre de user, payment_type y category
     user_name = fields.String(attribute="user.name")
     payment_type_name = fields.String(attribute="payment_type.name")
     category_name = fields.String(attribute="category.category_name")
+    client_name = fields.String(attribute="client.name")
