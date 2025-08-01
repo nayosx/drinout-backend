@@ -107,3 +107,52 @@ def get_profile():
     return jsonify({
         "message": f"Este es el perfil del usuario con ID: {current_user_id}"
     }), 200
+
+@user_bp.route("/<int:user_id>/change-password", methods=["PUT"])
+@jwt_required()
+def change_password(user_id):
+    current_user_id = get_jwt_identity()
+    if user_id != current_user_id:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    user = User.query.get_or_404(user_id)
+    json_data = request.get_json()
+
+    if not json_data:
+        return jsonify({"error": "No input data provided"}), 400
+
+    old_password = json_data.get("old_password")
+    new_password = json_data.get("new_password")
+
+    if not old_password or not new_password:
+        return jsonify({"error": "Both old and new passwords are required"}), 400
+
+
+    if not check_password_hash(user.password, old_password):
+        return jsonify({"error": "Incorrect current password"}), 401
+
+    user.password = generate_password_hash(new_password)
+    db.session.commit()
+
+    return jsonify({"message": "Password updated successfully"}), 200
+
+
+@user_bp.route("/<int:user_id>/force-password", methods=["PUT"])
+@jwt_required()
+def force_change_password(user_id):
+    current_user_id = get_jwt_identity()
+    current_user = User.query.get_or_404(current_user_id)
+
+    if current_user.role_id != 1:
+        return jsonify({"error": "Only admins can force password changes"}), 403
+
+    user = User.query.get_or_404(user_id)
+    json_data = request.get_json()
+
+    if not json_data or "new_password" not in json_data:
+        return jsonify({"error": "New password required"}), 400
+
+    user.password = generate_password_hash(json_data["new_password"])
+    db.session.commit()
+
+    return jsonify({"message": f"Password updated for user {user.username}"}), 200
