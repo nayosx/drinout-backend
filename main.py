@@ -63,6 +63,6 @@ def create_app():
 application = create_app()
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5050))
+    port = int(os.getenv("PORT", 5000))
     debug = os.getenv("DEBUG", "False").lower() in ("true", "1", "t")
     application.run(debug=debug, host="0.0.0.0", port=port)
