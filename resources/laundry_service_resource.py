@@ -5,19 +5,15 @@ from models.laundry_service import LaundryService
 from models.laundry_activity_log import LaundryActivityLog
 from models.client import Client, ClientAddress
 from schemas.client_schema import ClientDetailSchema, ClientAddressNoUpdateSchema
-from schemas.laundry_service_schema import LaundryServiceSchema
+from schemas.laundry_service_schema import LaundryServiceAllSchema, LaundryServiceDetailSchema, LaundryServiceLiteSchema, LaundryServiceSchema, LaundryServiceGetSchema
 from schemas.transaction_schema import TransactionSchema
 from schemas.user_schema import UserSchema
 
 laundry_service_bp = Blueprint("laundry_service_bp", __name__, url_prefix="/laundry_services")
 
 schema = LaundryServiceSchema()
-schema_list = LaundryServiceSchema(many=True)
-
-transaction_schema = TransactionSchema()
-user_schema = UserSchema()
-client_schema = ClientDetailSchema()
-address_schema = ClientAddressNoUpdateSchema()
+schema_get = LaundryServiceGetSchema()
+schema_get_list = LaundryServiceGetSchema(many=True)
 
 def map_status_to_log_enum(status):
     return {
@@ -50,10 +46,16 @@ def get_all():
     if to_date:
         query = query.filter(LaundryService.scheduled_pickup_at <= to_date)
 
-    pagination = query.order_by(LaundryService.id.desc()).paginate(page=page, per_page=per_page, error_out=False)
+    if status:
+        query = query.order_by(LaundryService.scheduled_pickup_at.asc())
+    else:
+        query = query.order_by(LaundryService.id.desc())
+
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
 
     return jsonify({
-        "items": schema_list.dump(pagination.items),
+        "items": schema_get_list.dump(pagination.items),
         "total": pagination.total,
         "page": pagination.page,
         "per_page": pagination.per_page,
@@ -65,30 +67,7 @@ def get_all():
 @jwt_required()
 def get_laundry_service(service_id):
     service = LaundryService.query.get_or_404(service_id)
-
-    client = service.client
-    transaction = service.transaction
-    created_by = service.created_by_user
-    client_address = service.client_address
-
-    result = {
-        "id": service.id,
-        "client_id": service.client_id,
-        "client_address_id": service.client_address_id,
-        "scheduled_pickup_at": service.scheduled_pickup_at,
-        "status": service.status,
-        "service_label": service.service_label,
-        "detail": service.detail,
-        "transaction_id": service.transaction_id,
-        "created_at": service.created_at,
-        "updated_at": service.updated_at,
-        "client": client_schema.dump(client) if client else None,
-        "transaction": transaction_schema.dump(transaction) if transaction else None,
-        "created_by": user_schema.dump(created_by) if created_by else None,
-        "client_address": address_schema.dump(client_address) if client_address else None
-    }
-
-    return jsonify(result), 200
+    return jsonify(schema_get.dump(service)), 200
 
 
 @laundry_service_bp.route("", methods=["POST"])
@@ -114,7 +93,6 @@ def create():
         client_address_id=data["client_address_id"],
         scheduled_pickup_at=data["scheduled_pickup_at"],
         service_label=data["service_label"],
-        detail=data.get("detail"),
         status=data["status"],
         transaction_id=data.get("transaction_id"),
         created_by_user_id=current_user_id
@@ -164,8 +142,6 @@ def update(item_id):
         item.scheduled_pickup_at = data["scheduled_pickup_at"]
     if "service_label" in data:
         item.service_label = data["service_label"]
-    if "detail" in data:
-        item.detail = data["detail"]
     if "status" in data:
         if item.status != data["status"]:
             item.status = data["status"]
@@ -196,7 +172,6 @@ def delete(item_id):
     item = LaundryService.query.get_or_404(item_id)
     db.session.delete(item)
     db.session.commit()
-    current_user_id = get_jwt_identity()
     return jsonify({"message": f"LaundryService {item_id} deleted"}), 200
 
 
@@ -208,7 +183,7 @@ def update_status(item_id):
     if not json_data or "status" not in json_data:
         return jsonify({"error": "Missing 'status' in request"}), 400
 
-    valid_statuses = ["PENDING", "IN_PROGRESS", "READY_FOR_DELIVERY", "DELIVERED", "CANCELLED"]
+    valid_statuses = ["PENDING", "STARTED", "IN_PROGRESS", "READY_FOR_DELIVERY", "DELIVERED", "CANCELLED"]
     new_status = json_data["status"]
 
     if new_status not in valid_statuses:
@@ -232,3 +207,68 @@ def update_status(item_id):
     db.session.commit()
 
     return jsonify(schema.dump(item)), 200
+
+
+@laundry_service_bp.route("/<int:service_id>/notes", methods=["GET"])
+@jwt_required()
+def get_laundry_service_with_messages(service_id):
+    service = LaundryService.query.get_or_404(service_id)
+    return jsonify(LaundryServiceAllSchema().dump(service)), 200
+
+
+@laundry_service_bp.route("/lite", methods=["GET"])
+@jwt_required()
+def get_lite():
+    page = request.args.get("page", default=1, type=int)
+    per_page = request.args.get("per_page", default=10, type=int)
+    status = request.args.get("status")
+    client_id = request.args.get("client_id", type=int)
+
+    query = LaundryService.query
+
+    if client_id:
+        query = query.filter_by(client_id=client_id)
+    if status:
+        query = query.filter_by(status=status)
+
+    query = query.order_by(LaundryService.scheduled_pickup_at.asc() if status else LaundryService.id.desc())
+
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    schema = LaundryServiceLiteSchema(many=True)
+    return jsonify({
+        "items": schema.dump(pagination.items),
+        "total": pagination.total,
+        "page": pagination.page,
+        "per_page": pagination.per_page,
+        "pages": pagination.pages
+    }), 200
+
+
+@laundry_service_bp.route("/detail", methods=["GET"])
+@jwt_required()
+def get_detail():
+    page = request.args.get("page", default=1, type=int)
+    per_page = request.args.get("per_page", default=10, type=int)
+    status = request.args.get("status")
+    client_id = request.args.get("client_id", type=int)
+
+    query = LaundryService.query
+
+    if client_id:
+        query = query.filter_by(client_id=client_id)
+    if status:
+        query = query.filter_by(status=status)
+
+    query = query.order_by(LaundryService.scheduled_pickup_at.asc() if status else LaundryService.id.desc())
+
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    schema = LaundryServiceDetailSchema(many=True)
+    return jsonify({
+        "items": schema.dump(pagination.items),
+        "total": pagination.total,
+        "page": pagination.page,
+        "per_page": pagination.per_page,
+        "pages": pagination.pages
+    }), 200

@@ -19,7 +19,7 @@ class Config:
     
     # Tiempo de expiración tokens
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=60)
-    JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
+    JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=1)
 
 """     # Configuración para uso de cookies
     JWT_TOKEN_LOCATION = ["cookies"]

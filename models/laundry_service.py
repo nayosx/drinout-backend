@@ -9,9 +9,8 @@ class LaundryService(db.Model):
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
     client_address_id = Column(Integer, ForeignKey("client_addresses.id"), nullable=False)
     scheduled_pickup_at = Column(DateTime, nullable=False)
-    status = Column(Enum("PENDING", "IN_PROGRESS", "READY_FOR_DELIVERY", "DELIVERED", "CANCELLED"), nullable=False, default="PENDING")
+    status = Column(Enum("PENDING", "STARTED", "IN_PROGRESS", "READY_FOR_DELIVERY", "DELIVERED", "CANCELLED", name="laundry_status"), nullable=False, default="PENDING")
     service_label = Column(Enum("NORMAL", "EXPRESS"), nullable=False, default="NORMAL")
-    detail = Column(Text, nullable=True)
     transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)
     created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=func.now())
@@ -21,6 +20,14 @@ class LaundryService(db.Model):
     client_address = relationship("ClientAddress")
     transaction = relationship("Transaction")
     created_by_user = relationship("User")
+
+    logs = relationship(
+        "LaundryServiceLog",
+        back_populates="laundry_service",
+        order_by="LaundryServiceLog.created_at",
+        cascade="all, delete-orphan"
+    )
+
 
     def __repr__(self):
         return f"<LaundryService id={self.id} status={self.status}>"

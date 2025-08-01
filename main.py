@@ -22,6 +22,7 @@ from resources.client_phone import phones_bp
 from resources.laundry_service_resource import laundry_service_bp
 from resources.laundry_delivery_resource import laundry_delivery_bp
 from resources.laundry_processing_step_resource import processing_step_bp
+from resources.laundry_service_log_resource import laundry_service_log_bp
 
 
 load_dotenv()
@@ -51,6 +52,7 @@ def create_app():
     app.register_blueprint(laundry_service_bp)
     app.register_blueprint(laundry_delivery_bp)
     app.register_blueprint(processing_step_bp)
+    app.register_blueprint(laundry_service_log_bp)
 
     @app.before_first_request
     def create_tables():

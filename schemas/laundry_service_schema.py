@@ -1,6 +1,12 @@
 from marshmallow import Schema, fields, validate
 from schemas.base import LocalDateTimeMixin
 
+from schemas.client_schema import ClientDetailSchema, ClientSchema, ClientShortSchema, ClientWithPhonesSchema
+from schemas.client_schema import ClientAddressNoUpdateSchema
+from schemas.laundry_service_log_schema import LaundryServiceLogSchema
+from schemas.transaction_schema import TransactionSchema
+from schemas.user_schema import UserSchema
+
 class LaundryServiceSchema(LocalDateTimeMixin, Schema):
     id = fields.Int(dump_only=True)
 
@@ -9,9 +15,10 @@ class LaundryServiceSchema(LocalDateTimeMixin, Schema):
     scheduled_pickup_at = fields.DateTime(required=True)
 
     status = fields.Str(
-        required=True,
-        validate=validate.OneOf([
+    required=True,
+    validate=validate.OneOf([
             "PENDING",
+            "STARTED",
             "IN_PROGRESS",
             "READY_FOR_DELIVERY",
             "DELIVERED",
@@ -19,14 +26,44 @@ class LaundryServiceSchema(LocalDateTimeMixin, Schema):
         ])
     )
 
+
     service_label = fields.Str(
         required=True,
         validate=validate.OneOf(["NORMAL", "EXPRESS"])
     )
 
-    detail = fields.Str(allow_none=True)
     transaction_id = fields.Int(allow_none=True)
 
     created_by_user_id = fields.Int(dump_only=True)
     created_at = fields.DateTime(dump_only=True)
     updated_at = fields.DateTime(dump_only=True)
+
+
+class LaundryServiceGetSchema(LaundryServiceSchema):
+    client = fields.Nested(ClientDetailSchema, only=["id", "name"], dump_only=True)
+    client_address = fields.Nested(ClientAddressNoUpdateSchema, dump_only=True, allow_none=True)
+    transaction = fields.Nested(TransactionSchema, dump_only=True, allow_none=True)
+    created_by = fields.Nested(UserSchema, dump_only=True, allow_none=True)
+
+class LaundryServiceAllSchema(LaundryServiceGetSchema):
+    logs = fields.List(fields.Nested(LaundryServiceLogSchema), dump_only=True)
+
+
+class LaundryServiceLiteSchema(LaundryServiceSchema):
+    id = fields.Int()
+    scheduled_pickup_at = fields.DateTime()
+    status = fields.Str()
+    service_label = fields.Str()
+    client = fields.Nested(ClientShortSchema, only=["id", "name"])
+    created_by_user = fields.Nested(UserSchema, only=["name"])
+
+
+class LaundryServiceDetailSchema(LaundryServiceSchema):
+    id = fields.Int()
+    scheduled_pickup_at = fields.DateTime()
+    status = fields.Str()
+    service_label = fields.Str()
+    client = fields.Nested(ClientWithPhonesSchema)
+    client_address = fields.Nested(ClientAddressNoUpdateSchema)
+    transaction = fields.Nested(TransactionSchema, allow_none=True)
+    created_by_user = fields.Nested(UserSchema, only=["name"])

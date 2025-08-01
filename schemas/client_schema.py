@@ -87,3 +87,12 @@ class ClientDetailSchema(LocalDateTimeMixin, Schema):
     updated_at = fields.DateTime()
     addresses = fields.Nested(ClientAddressNoUpdateSchema, many=True)
     phones = fields.Nested(ClientPhoneNoUpdateSchema, many=True)
+
+
+class ClientWithPhonesSchema(LocalDateTimeMixin, Schema):
+    id = fields.Int()
+    name = fields.Str()
+    email = fields.Str()
+    document_id = fields.Str()
+    is_deleted = fields.Bool()
+    phones = fields.Nested(ClientPhoneNoUpdateSchema, many=True)
