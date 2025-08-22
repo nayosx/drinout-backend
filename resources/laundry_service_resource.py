@@ -5,9 +5,10 @@ from models.laundry_service import LaundryService
 from models.laundry_activity_log import LaundryActivityLog
 from models.client import Client, ClientAddress
 from schemas.client_schema import ClientDetailSchema, ClientAddressNoUpdateSchema
-from schemas.laundry_service_schema import LaundryServiceAllSchema, LaundryServiceDetailSchema, LaundryServiceLiteSchema, LaundryServiceSchema, LaundryServiceGetSchema
+from schemas.laundry_service_schema import LaundryServiceAllSchema, LaundryServiceDetailSchema, LaundryServiceLiteSchema, LaundryServiceSchema, LaundryServiceGetSchema, LaundryServiceCompactSchema
 from schemas.transaction_schema import TransactionSchema
 from schemas.user_schema import UserSchema
+from sqlalchemy.orm import selectinload
 
 laundry_service_bp = Blueprint("laundry_service_bp", __name__, url_prefix="/laundry_services")
 
@@ -267,6 +268,42 @@ def get_detail():
     schema = LaundryServiceDetailSchema(many=True)
     return jsonify({
         "items": schema.dump(pagination.items),
+        "total": pagination.total,
+        "page": pagination.page,
+        "per_page": pagination.per_page,
+        "pages": pagination.pages
+    }), 200
+
+
+compact_schema_many = LaundryServiceCompactSchema(many=True)
+
+@laundry_service_bp.route("/compact", methods=["GET"])
+@jwt_required()
+def get_compact():
+    page = request.args.get("page", default=1, type=int)
+    per_page = request.args.get("per_page", default=10, type=int)
+    status = request.args.get("status")
+    client_id = request.args.get("client_id", type=int)
+
+    query = LaundryService.query.options(
+        selectinload(LaundryService.client),
+        selectinload(LaundryService.client_address),
+        selectinload(LaundryService.created_by_user)
+    )
+
+    if client_id:
+        query = query.filter_by(client_id=client_id)
+    if status:
+        query = query.filter_by(status=status)
+
+    query = query.order_by(
+        LaundryService.scheduled_pickup_at.asc() if status else LaundryService.id.desc()
+    )
+
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    return jsonify({
+        "items": compact_schema_many.dump(pagination.items),
         "total": pagination.total,
         "page": pagination.page,
         "per_page": pagination.per_page,

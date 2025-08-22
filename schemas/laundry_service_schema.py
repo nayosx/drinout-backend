@@ -67,3 +67,20 @@ class LaundryServiceDetailSchema(LaundryServiceSchema):
     client_address = fields.Nested(ClientAddressNoUpdateSchema)
     transaction = fields.Nested(TransactionSchema, allow_none=True)
     created_by_user = fields.Nested(UserSchema, only=["name"])
+
+class LaundryServiceCompactSchema(LaundryServiceSchema):
+    id = fields.Int()
+    service_label = fields.Str()
+    status = fields.Str()
+    created_at = fields.DateTime()
+    created_by_user = fields.Nested("UserSchema", only=("name",))
+    created_by_user_id = fields.Int()
+    client = fields.Nested("ClientDetailSchema", only=("id", "name"))
+    client_id = fields.Int()
+    client_address_id = fields.Int()
+    client_address = fields.Nested(ClientAddressNoUpdateSchema, only=("id", "client_id", "address_text"))
+    has_transaction = fields.Method("get_has_transaction")
+
+    def get_has_transaction(self, obj):
+        return obj.transaction_id is not None
+
