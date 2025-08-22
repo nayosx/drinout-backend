@@ -18,7 +18,7 @@ class Config:
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "jwtawesometoken")
     
     # Tiempo de expiración tokens
-    JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=60)
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=9)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=1)
 
 """     # Configuración para uso de cookies
