@@ -14,8 +14,18 @@ class Client(db.Model):
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     updated_at = db.Column(db.DateTime, server_default=db.func.now(), onupdate=db.func.now())
 
-    addresses = db.relationship("ClientAddress", backref="client", lazy="dynamic", cascade="all, delete-orphan")
-    phones = db.relationship("ClientPhone", backref="client", lazy="dynamic", cascade="all, delete-orphan")
+    addresses = db.relationship(
+        "ClientAddress",
+        back_populates="client",
+        lazy="selectin",
+        cascade="all, delete-orphan"
+    )
+    phones = db.relationship(
+        "ClientPhone",
+        back_populates="client",
+        lazy="selectin",
+        cascade="all, delete-orphan"
+    )
 
 
 class ClientAddress(db.Model):
@@ -35,6 +45,11 @@ class ClientAddress(db.Model):
     is_primary = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
 
+    client = db.relationship(
+        "Client",
+        back_populates="addresses"
+    )
+
 
 class ClientPhone(db.Model):
     __tablename__ = 'client_phones'
@@ -45,3 +60,8 @@ class ClientPhone(db.Model):
     description = db.Column(db.String(100))
     is_primary = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
+
+    client = db.relationship(
+        "Client",
+        back_populates="phones"
+    )
