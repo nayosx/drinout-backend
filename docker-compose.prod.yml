@@ -5,7 +5,7 @@ services:
     ports:
       - "5000:5000"
     env_file:
-      - .env
+      - .env.prod
     working_dir: /app
     environment:
       FLASK_ENV: "production"
