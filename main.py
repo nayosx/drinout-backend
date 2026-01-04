@@ -9,6 +9,8 @@ from flask_jwt_extended import JWTManager
 from config import Config
 from db import db, init_db
 
+
+from resources.healthcheck_resource import health_bp
 from resources.user_resource import user_bp
 from resources.auth_resource import auth_bp
 from resources.transaction_resource import transaction_bp
@@ -51,6 +53,7 @@ def create_app():
 
     JWTManager(app)
 
+    app.register_blueprint(health_bp)
     app.register_blueprint(user_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(payment_type_bp)
