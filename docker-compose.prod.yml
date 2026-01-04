@@ -1,0 +1,21 @@
+services:
+  drinout:
+    build: .
+    container_name: drinout-back-prod
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    working_dir: /app
+    environment:
+      FLASK_ENV: "production"
+      DEBUG: "False"
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    command: gunicorn -w 2 -b 0.0.0.0:5000 "main:application"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
