@@ -285,6 +285,10 @@ def get_compact():
     status = request.args.get("status")
     client_id = request.args.get("client_id", type=int)
 
+    sort_mode = request.args.get("sort_mode")
+    sort_by = request.args.get("sort_by")
+    sort_dir = request.args.get("sort_dir", default="desc").lower()
+
     query = LaundryService.query.options(
         selectinload(LaundryService.client),
         selectinload(LaundryService.client_address),
@@ -296,9 +300,43 @@ def get_compact():
     if status:
         query = query.filter_by(status=status)
 
-    query = query.order_by(
-        LaundryService.scheduled_pickup_at.asc() if status else LaundryService.id.desc()
-    )
+    allowed_sort_by = {
+        "id": LaundryService.id,
+        "scheduled_pickup_at": LaundryService.scheduled_pickup_at,
+        "created_at": LaundryService.created_at,
+        "status": LaundryService.status,
+        "service_label": LaundryService.service_label
+    }
+
+    def apply_default_order(q):
+        if status:
+            return q.order_by(LaundryService.scheduled_pickup_at.asc(), LaundryService.id.asc())
+        return q.order_by(LaundryService.id.desc())
+
+    def apply_mode(q, mode: str):
+        mode = (mode or "").lower()
+        if mode == "recent":
+            return q.order_by(LaundryService.id.desc())
+        if mode == "oldest":
+            return q.order_by(LaundryService.id.asc())
+        if mode == "agenda":
+            return q.order_by(LaundryService.scheduled_pickup_at.asc(), LaundryService.id.asc())
+        if mode == "pickup_desc":
+            return q.order_by(LaundryService.scheduled_pickup_at.desc(), LaundryService.id.desc())
+        if mode == "status_then_pickup":
+            return q.order_by(LaundryService.status.asc(), LaundryService.scheduled_pickup_at.asc(), LaundryService.id.asc())
+        return apply_default_order(q)
+
+    if sort_mode:
+        query = apply_mode(query, sort_mode)
+    elif sort_by in allowed_sort_by:
+        col = allowed_sort_by[sort_by]
+        if sort_dir == "asc":
+            query = query.order_by(col.asc(), LaundryService.id.asc())
+        else:
+            query = query.order_by(col.desc(), LaundryService.id.desc())
+    else:
+        query = apply_default_order(query)
 
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
@@ -307,5 +345,8 @@ def get_compact():
         "total": pagination.total,
         "page": pagination.page,
         "per_page": pagination.per_page,
-        "pages": pagination.pages
+        "pages": pagination.pages,
+        "sort_mode": sort_mode,
+        "sort_by": sort_by,
+        "sort_dir": sort_dir
     }), 200
