@@ -1,20 +1,21 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from db import db
 from models.laundry_service import LaundryService
 from models.laundry_activity_log import LaundryActivityLog
 from models.client import Client, ClientAddress
-from schemas.client_schema import ClientDetailSchema, ClientAddressNoUpdateSchema
 from schemas.laundry_service_schema import LaundryServiceAllSchema, LaundryServiceDetailSchema, LaundryServiceLiteSchema, LaundryServiceSchema, LaundryServiceGetSchema, LaundryServiceCompactSchema
-from schemas.transaction_schema import TransactionSchema
-from schemas.user_schema import UserSchema
 from sqlalchemy.orm import selectinload
+from services.laundry_queue_service import fetch_queue_items, reorder_pending_ids
+from services.laundry_queue_events import emit_queue_updated
 
 laundry_service_bp = Blueprint("laundry_service_bp", __name__, url_prefix="/laundry_services")
 
 schema = LaundryServiceSchema()
 schema_get = LaundryServiceGetSchema()
 schema_get_list = LaundryServiceGetSchema(many=True)
+
+compact_schema_many = LaundryServiceCompactSchema(many=True)
 
 def map_status_to_log_enum(status):
     return {
@@ -25,6 +26,8 @@ def map_status_to_log_enum(status):
         "CANCELLED": "CANCELADO"
     }.get(status)
 
+def _get_socketio():
+    return current_app.extensions.get("socketio")
 
 @laundry_service_bp.route("", methods=["GET"])
 @jwt_required()
@@ -54,7 +57,6 @@ def get_all():
 
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
-
     return jsonify({
         "items": schema_get_list.dump(pagination.items),
         "total": pagination.total,
@@ -63,13 +65,11 @@ def get_all():
         "pages": pagination.pages
     }), 200
 
-
 @laundry_service_bp.route("/<int:service_id>", methods=["GET"])
 @jwt_required()
 def get_laundry_service(service_id):
     service = LaundryService.query.get_or_404(service_id)
     return jsonify(schema_get.dump(service)), 200
-
 
 @laundry_service_bp.route("", methods=["POST"])
 @jwt_required()
@@ -111,8 +111,11 @@ def create():
     db.session.add(log)
     db.session.commit()
 
-    return jsonify(schema.dump(item)), 201
+    socketio = _get_socketio()
+    if socketio:
+        emit_queue_updated(socketio, statuses=[item.status], client_id=item.client_id, include_client_room=False)
 
+    return jsonify(schema.dump(item)), 201
 
 @laundry_service_bp.route("/<int:item_id>", methods=["PUT"])
 @jwt_required()
@@ -124,7 +127,8 @@ def update(item_id):
 
     data = schema.load(json_data, partial=True)
     current_user_id = get_jwt_identity()
-    previous_status = map_status_to_log_enum(item.status)
+
+    old_status = item.status
     status_changed = False
 
     if "client_id" in data:
@@ -157,24 +161,36 @@ def update(item_id):
             laundry_service_id=item.id,
             user_id=current_user_id,
             action="ACTUALIZACION",
-            previous_status=previous_status,
+            previous_status=map_status_to_log_enum(old_status),
             new_status=map_status_to_log_enum(item.status),
             description="Actualización de estado del servicio."
         )
         db.session.add(log)
         db.session.commit()
 
-    return jsonify(schema.dump(item)), 200
+        socketio = _get_socketio()
+        if socketio:
+            if old_status:
+                emit_queue_updated(socketio, statuses=[old_status], client_id=item.client_id, include_client_room=False)
+            emit_queue_updated(socketio, statuses=[item.status], client_id=item.client_id, include_client_room=False)
 
+    return jsonify(schema.dump(item)), 200
 
 @laundry_service_bp.route("/<int:item_id>", methods=["DELETE"])
 @jwt_required()
 def delete(item_id):
     item = LaundryService.query.get_or_404(item_id)
+    client_id = item.client_id
+    old_status = item.status
+
     db.session.delete(item)
     db.session.commit()
-    return jsonify({"message": f"LaundryService {item_id} deleted"}), 200
 
+    socketio = _get_socketio()
+    if socketio and old_status:
+        emit_queue_updated(socketio, statuses=[old_status], client_id=client_id, include_client_room=False)
+
+    return jsonify({"message": f"LaundryService {item_id} deleted"}), 200
 
 @laundry_service_bp.route("/<int:item_id>/update_status", methods=["PATCH"])
 @jwt_required()
@@ -191,7 +207,7 @@ def update_status(item_id):
         return jsonify({"error": f"Invalid status. Valid options: {valid_statuses}"}), 400
 
     current_user_id = get_jwt_identity()
-    previous_status = map_status_to_log_enum(item.status)
+    old_status = item.status
 
     item.status = new_status
     db.session.commit()
@@ -200,22 +216,26 @@ def update_status(item_id):
         laundry_service_id=item.id,
         user_id=current_user_id,
         action="CAMBIO_ESTADO",
-        previous_status=previous_status,
+        previous_status=map_status_to_log_enum(old_status),
         new_status=map_status_to_log_enum(new_status),
         description=f"Cambio de estado a {new_status}"
     )
     db.session.add(log)
     db.session.commit()
 
-    return jsonify(schema.dump(item)), 200
+    socketio = _get_socketio()
+    if socketio:
+        if old_status:
+            emit_queue_updated(socketio, statuses=[old_status], client_id=item.client_id, include_client_room=False)
+        emit_queue_updated(socketio, statuses=[new_status], client_id=item.client_id, include_client_room=False)
 
+    return jsonify(schema.dump(item)), 200
 
 @laundry_service_bp.route("/<int:service_id>/notes", methods=["GET"])
 @jwt_required()
 def get_laundry_service_with_messages(service_id):
     service = LaundryService.query.get_or_404(service_id)
     return jsonify(LaundryServiceAllSchema().dump(service)), 200
-
 
 @laundry_service_bp.route("/lite", methods=["GET"])
 @jwt_required()
@@ -236,15 +256,14 @@ def get_lite():
 
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
-    schema = LaundryServiceLiteSchema(many=True)
+    schema_lite = LaundryServiceLiteSchema(many=True)
     return jsonify({
-        "items": schema.dump(pagination.items),
+        "items": schema_lite.dump(pagination.items),
         "total": pagination.total,
         "page": pagination.page,
         "per_page": pagination.per_page,
         "pages": pagination.pages
     }), 200
-
 
 @laundry_service_bp.route("/detail", methods=["GET"])
 @jwt_required()
@@ -265,17 +284,14 @@ def get_detail():
 
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
-    schema = LaundryServiceDetailSchema(many=True)
+    schema_detail = LaundryServiceDetailSchema(many=True)
     return jsonify({
-        "items": schema.dump(pagination.items),
+        "items": schema_detail.dump(pagination.items),
         "total": pagination.total,
         "page": pagination.page,
         "per_page": pagination.per_page,
         "pages": pagination.pages
     }), 200
-
-
-compact_schema_many = LaundryServiceCompactSchema(many=True)
 
 @laundry_service_bp.route("/compact", methods=["GET"])
 @jwt_required()
@@ -321,10 +337,6 @@ def get_compact():
             return q.order_by(LaundryService.id.asc())
         if mode == "agenda":
             return q.order_by(LaundryService.scheduled_pickup_at.asc(), LaundryService.id.asc())
-        if mode == "pickup_desc":
-            return q.order_by(LaundryService.scheduled_pickup_at.desc(), LaundryService.id.desc())
-        if mode == "status_then_pickup":
-            return q.order_by(LaundryService.status.asc(), LaundryService.scheduled_pickup_at.asc(), LaundryService.id.asc())
         return apply_default_order(q)
 
     if sort_mode:
@@ -350,3 +362,35 @@ def get_compact():
         "sort_by": sort_by,
         "sort_dir": sort_dir
     }), 200
+
+@laundry_service_bp.route("/queue", methods=["GET"])
+@jwt_required()
+def get_queue():
+    client_id = request.args.get("client_id", type=int)
+    status_raw = request.args.get("status")
+
+    items, err, code = fetch_queue_items(client_id, status_raw)
+    if err:
+        return jsonify(err), code
+
+    return jsonify({
+        "items": compact_schema_many.dump(items),
+        "total": len(items)
+    }), 200
+
+@laundry_service_bp.route("/pending/reorder", methods=["PATCH"])
+@jwt_required()
+def reorder_pending():
+    json_data = request.get_json()
+    if not json_data or "ids" not in json_data:
+        return jsonify({"error": "Missing 'ids' in request"}), 400
+
+    current_user_id = get_jwt_identity()
+    payload, code = reorder_pending_ids(json_data.get("ids"), current_user_id)
+
+    if code == 200:
+        socketio = _get_socketio()
+        if socketio:
+            emit_queue_updated(socketio, statuses=["PENDING"], client_id=None, include_client_room=False)
+
+    return jsonify(payload), code

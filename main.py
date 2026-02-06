@@ -9,7 +9,6 @@ from flask_jwt_extended import JWTManager
 from config import Config
 from db import db, init_db
 
-
 from resources.healthcheck_resource import health_bp
 from resources.user_resource import user_bp
 from resources.auth_resource import auth_bp
@@ -29,6 +28,8 @@ from resources.laundry_delivery_resource import laundry_delivery_bp
 from resources.laundry_processing_step_resource import processing_step_bp
 from resources.laundry_service_log_resource import laundry_service_log_bp
 
+from extensions.socketio_ext import socketio
+from sockets.laundry_queue_socket import register_laundry_queue_socket
 
 def create_app():
     app = Flask(__name__)
@@ -72,12 +73,14 @@ def create_app():
     app.register_blueprint(processing_step_bp)
     app.register_blueprint(laundry_service_log_bp)
 
-    return app
+    socketio.init_app(app)
+    register_laundry_queue_socket(socketio)
 
+    return app
 
 application = create_app()
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "5000"))
     debug = os.getenv("DEBUG", "False").lower() in ("true", "1", "t")
-    application.run(debug=debug, host="0.0.0.0", port=port, use_reloader=debug)
+    socketio.run(application, debug=debug, host="0.0.0.0", port=port, use_reloader=debug)
