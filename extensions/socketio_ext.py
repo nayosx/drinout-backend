@@ -1,3 +1,3 @@
-from flask_socketio import SocketIO
+from app.extensions.socketio import socketio
 
-socketio = SocketIO(cors_allowed_origins="*", async_mode="eventlet")
+__all__ = ["socketio"]
