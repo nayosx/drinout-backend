@@ -1,7 +1,7 @@
 from flask import request
 from flask_jwt_extended import decode_token
 from flask_socketio import join_room, leave_room
-from services.laundry_queue_service import reorder_pending_ids, fetch_queue_items
+from app.modules.laundry.queue.service import reorder_pending_ids, fetch_queue_items
 from schemas.laundry_service_schema import LaundryServiceCompactSchema
 
 BASE_ROOM = "laundry:queue"

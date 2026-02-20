@@ -6,8 +6,8 @@ from models.laundry_activity_log import LaundryActivityLog
 from models.client import Client, ClientAddress
 from schemas.laundry_service_schema import LaundryServiceAllSchema, LaundryServiceDetailSchema, LaundryServiceLiteSchema, LaundryServiceSchema, LaundryServiceGetSchema, LaundryServiceCompactSchema
 from sqlalchemy.orm import selectinload
-from services.laundry_queue_service import fetch_queue_items, reorder_pending_ids
-from services.laundry_queue_events import emit_queue_updated
+from app.modules.laundry.queue.service import fetch_queue_items, reorder_pending_ids
+from app.modules.laundry.queue.events import emit_queue_updated
 
 laundry_service_bp = Blueprint("laundry_service_bp", __name__, url_prefix="/laundry_services")
 

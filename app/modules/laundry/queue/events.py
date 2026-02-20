@@ -1,4 +1,4 @@
-from services.laundry_queue_service import fetch_queue_items
+from app.modules.laundry.queue.service import fetch_queue_items
 from schemas.laundry_service_schema import LaundryServiceCompactSchema
 
 BASE_ROOM = "laundry:queue"
