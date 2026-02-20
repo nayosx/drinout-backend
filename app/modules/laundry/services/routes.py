@@ -29,6 +29,39 @@ def map_status_to_log_enum(status):
 def _get_socketio():
     return current_app.extensions.get("socketio")
 
+
+def _emit_queue_for_status_and_all(socketio, statuses):
+    if not socketio:
+        return
+
+    status_list = []
+    for status in statuses:
+        if status:
+            status_list.append(status)
+
+    seen_statuses = set()
+    unique_statuses = []
+    for status in status_list:
+        if status in seen_statuses:
+            continue
+        seen_statuses.add(status)
+        unique_statuses.append(status)
+
+    emit_queue_updated(
+        socketio,
+        statuses=None,
+        include_global_room=True,
+        include_client_room=False,
+    )
+    for status in unique_statuses:
+        emit_queue_updated(
+            socketio,
+            statuses=[status],
+            include_global_room=True,
+            include_client_room=False,
+        )
+
+
 @laundry_service_bp.route("", methods=["GET"])
 @jwt_required()
 def get_all():
@@ -113,7 +146,7 @@ def create():
 
     socketio = _get_socketio()
     if socketio:
-        emit_queue_updated(socketio, statuses=[item.status], client_id=item.client_id, include_client_room=False)
+        _emit_queue_for_status_and_all(socketio, statuses=[item.status])
 
     return jsonify(schema.dump(item)), 201
 
@@ -168,11 +201,12 @@ def update(item_id):
         db.session.add(log)
         db.session.commit()
 
+    if status_changed:
         socketio = _get_socketio()
-        if socketio:
-            if old_status:
-                emit_queue_updated(socketio, statuses=[old_status], client_id=item.client_id, include_client_room=False)
-            emit_queue_updated(socketio, statuses=[item.status], client_id=item.client_id, include_client_room=False)
+        _emit_queue_for_status_and_all(
+            socketio,
+            statuses=[old_status, item.status],
+        )
 
     return jsonify(schema.dump(item)), 200
 
@@ -180,15 +214,17 @@ def update(item_id):
 @jwt_required()
 def delete(item_id):
     item = LaundryService.query.get_or_404(item_id)
-    client_id = item.client_id
     old_status = item.status
 
     db.session.delete(item)
     db.session.commit()
 
     socketio = _get_socketio()
-    if socketio and old_status:
-        emit_queue_updated(socketio, statuses=[old_status], client_id=client_id, include_client_room=False)
+    if socketio:
+        _emit_queue_for_status_and_all(
+            socketio,
+            statuses=[old_status],
+        )
 
     return jsonify({"message": f"LaundryService {item_id} deleted"}), 200
 
@@ -225,9 +261,10 @@ def update_status(item_id):
 
     socketio = _get_socketio()
     if socketio:
-        if old_status:
-            emit_queue_updated(socketio, statuses=[old_status], client_id=item.client_id, include_client_room=False)
-        emit_queue_updated(socketio, statuses=[new_status], client_id=item.client_id, include_client_room=False)
+        _emit_queue_for_status_and_all(
+            socketio,
+            statuses=[old_status, new_status],
+        )
 
     return jsonify(schema.dump(item)), 200
 
@@ -391,6 +428,9 @@ def reorder_pending():
     if code == 200:
         socketio = _get_socketio()
         if socketio:
-            emit_queue_updated(socketio, statuses=["PENDING"], client_id=None, include_client_room=False)
+            _emit_queue_for_status_and_all(
+                socketio,
+                statuses=["PENDING"],
+            )
 
     return jsonify(payload), code

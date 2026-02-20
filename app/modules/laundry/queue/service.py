@@ -129,4 +129,8 @@ def reorder_pending_ids(ids, current_user_id: int):
 
     db.session.commit()
 
-    return {"message": "PENDING order updated", "count": len(ids_int), "ids": ids_int}, 200
+    return {
+        "message": "PENDING order updated",
+        "count": len(ids_int),
+        "ids": ids_int,
+    }, 200
