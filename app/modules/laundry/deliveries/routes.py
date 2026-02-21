@@ -1,8 +1,9 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from db import db
 from models.laundry_delivery import LaundryDelivery
 from models.laundry_service import LaundryService
+from app.modules.laundry.queue.events import emit_queue_updated
 from schemas.client_schema import ClientDetailSchema
 from schemas.laundry_delivery_schema import LaundryDeliverySchema
 from schemas.transaction_schema import TransactionSchema
@@ -15,6 +16,42 @@ schema_list = LaundryDeliverySchema(many=True)
 transaction_schema = TransactionSchema()
 user_schema = UserSchema()
 client_schema = ClientDetailSchema()
+
+
+def _get_socketio():
+    return current_app.extensions.get("socketio")
+
+
+def _emit_queue_for_status_and_all(socketio, statuses):
+    if not socketio:
+        return
+
+    status_list = []
+    for status in statuses:
+        if status:
+            status_list.append(status)
+
+    seen_statuses = set()
+    unique_statuses = []
+    for status in status_list:
+        if status in seen_statuses:
+            continue
+        seen_statuses.add(status)
+        unique_statuses.append(status)
+
+    emit_queue_updated(
+        socketio,
+        statuses=None,
+        include_global_room=True,
+        include_client_room=False,
+    )
+    for status in unique_statuses:
+        emit_queue_updated(
+            socketio,
+            statuses=[status],
+            include_global_room=True,
+            include_client_room=False,
+        )
 
 
 @laundry_delivery_bp.route("", methods=["GET"])
@@ -107,6 +144,10 @@ def create():
     db.session.add(item)
     db.session.commit()
 
+    socketio = _get_socketio()
+    if socketio and service:
+        _emit_queue_for_status_and_all(socketio, statuses=[service.status])
+
     print(f"[AUDIT] LaundryDelivery {item.id} created by user {current_user_id}")
     return jsonify(schema.dump(item)), 201
 
@@ -115,6 +156,8 @@ def create():
 @jwt_required()
 def update(item_id):
     item = LaundryDelivery.query.get_or_404(item_id)
+    old_service = item.laundry_service
+    old_service_status = old_service.status if old_service else None
     json_data = request.get_json()
     if not json_data:
         return jsonify({"error": "No input data provided"}), 400
@@ -139,6 +182,12 @@ def update(item_id):
 
     db.session.commit()
 
+    new_service = item.laundry_service
+    new_service_status = new_service.status if new_service else None
+    socketio = _get_socketio()
+    if socketio:
+        _emit_queue_for_status_and_all(socketio, statuses=[old_service_status, new_service_status])
+
     print(f"[AUDIT] LaundryDelivery {item.id} updated by user {current_user_id}")
     return jsonify(schema.dump(item)), 200
 
@@ -147,8 +196,13 @@ def update(item_id):
 @jwt_required()
 def delete(item_id):
     item = LaundryDelivery.query.get_or_404(item_id)
+    service = item.laundry_service
+    service_status = service.status if service else None
     db.session.delete(item)
     db.session.commit()
+    socketio = _get_socketio()
+    if socketio:
+        _emit_queue_for_status_and_all(socketio, statuses=[service_status])
     current_user_id = get_jwt_identity()
     print(f"[AUDIT] LaundryDelivery {item.id} deleted by user {current_user_id}")
     return jsonify({"message": f"LaundryDelivery {item_id} deleted"}), 200
@@ -158,6 +212,8 @@ def delete(item_id):
 @jwt_required()
 def update_status(item_id):
     item = LaundryDelivery.query.get_or_404(item_id)
+    service = item.laundry_service
+    service_status = service.status if service else None
     json_data = request.get_json()
     if not json_data or "status" not in json_data:
         return jsonify({"error": "Missing 'status' in request"}), 400
@@ -174,6 +230,10 @@ def update_status(item_id):
         item.delivered_at = datetime.utcnow()
 
     db.session.commit()
+
+    socketio = _get_socketio()
+    if socketio:
+        _emit_queue_for_status_and_all(socketio, statuses=[service_status])
 
     current_user_id = get_jwt_identity()
     print(f"[AUDIT] LaundryDelivery {item.id} status changed to {new_status} by user {current_user_id}")

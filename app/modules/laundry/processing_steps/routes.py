@@ -1,8 +1,9 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from db import db
 from models.laundry_processing_step import LaundryProcessingStep
 from models.laundry_service import LaundryService
+from app.modules.laundry.queue.events import emit_queue_updated
 from schemas.laundry_processing_step_schema import LaundryProcessingStepSchema
 from schemas.transaction_schema import TransactionSchema
 from schemas.user_schema import UserSchema
@@ -15,6 +16,42 @@ schema_list = LaundryProcessingStepSchema(many=True)
 transaction_schema = TransactionSchema()
 user_schema = UserSchema()
 client_schema = ClientDetailSchema()
+
+
+def _get_socketio():
+    return current_app.extensions.get("socketio")
+
+
+def _emit_queue_for_status_and_all(socketio, statuses):
+    if not socketio:
+        return
+
+    status_list = []
+    for status in statuses:
+        if status:
+            status_list.append(status)
+
+    seen_statuses = set()
+    unique_statuses = []
+    for status in status_list:
+        if status in seen_statuses:
+            continue
+        seen_statuses.add(status)
+        unique_statuses.append(status)
+
+    emit_queue_updated(
+        socketio,
+        statuses=None,
+        include_global_room=True,
+        include_client_room=False,
+    )
+    for status in unique_statuses:
+        emit_queue_updated(
+            socketio,
+            statuses=[status],
+            include_global_room=True,
+            include_client_room=False,
+        )
 
 @processing_step_bp.route("", methods=["GET"])
 @jwt_required()
@@ -95,6 +132,10 @@ def create():
     db.session.add(step)
     db.session.commit()
 
+    socketio = _get_socketio()
+    if socketio:
+        _emit_queue_for_status_and_all(socketio, statuses=[service.status])
+
     return jsonify(schema.dump(step)), 201
 
 
@@ -102,6 +143,8 @@ def create():
 @jwt_required()
 def update(step_id):
     step = LaundryProcessingStep.query.get_or_404(step_id)
+    service = step.laundry_service
+    service_status = service.status if service else None
     json_data = request.get_json()
     if not json_data:
         return jsonify({"error": "No input data provided"}), 400
@@ -114,6 +157,10 @@ def update(step_id):
         step.notes = data["notes"]
 
     db.session.commit()
+
+    socketio = _get_socketio()
+    if socketio:
+        _emit_queue_for_status_and_all(socketio, statuses=[service_status])
     return jsonify(schema.dump(step)), 200
 
 
@@ -121,8 +168,13 @@ def update(step_id):
 @jwt_required()
 def delete(step_id):
     step = LaundryProcessingStep.query.get_or_404(step_id)
+    service = step.laundry_service
+    service_status = service.status if service else None
     db.session.delete(step)
     db.session.commit()
+    socketio = _get_socketio()
+    if socketio:
+        _emit_queue_for_status_and_all(socketio, statuses=[service_status])
     return jsonify({"message": f"LaundryProcessingStep {step_id} deleted"}), 200
 
 
@@ -130,6 +182,8 @@ def delete(step_id):
 @jwt_required()
 def complete(step_id):
     step = LaundryProcessingStep.query.get_or_404(step_id)
+    service = step.laundry_service
+    service_status = service.status if service else None
     current_user_id = get_jwt_identity()
 
     from datetime import datetime
@@ -137,4 +191,7 @@ def complete(step_id):
     step.completed_at = datetime.utcnow()
 
     db.session.commit()
+    socketio = _get_socketio()
+    if socketio:
+        _emit_queue_for_status_and_all(socketio, statuses=[service_status])
     return jsonify(schema.dump(step)), 200
