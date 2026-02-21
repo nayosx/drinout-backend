@@ -163,28 +163,40 @@ def update(item_id):
 
     old_status = item.status
     status_changed = False
+    queue_relevant_changed = False
 
     if "client_id" in data:
         client = Client.query.get(data["client_id"])
         if not client:
             return jsonify({"error": "Client not found"}), 404
+        if item.client_id != data["client_id"]:
+            queue_relevant_changed = True
         item.client_id = data["client_id"]
 
     if "client_address_id" in data:
         address = ClientAddress.query.get(data["client_address_id"])
         if not address or address.client_id != item.client_id:
             return jsonify({"error": "Address does not belong to client"}), 400
+        if item.client_address_id != data["client_address_id"]:
+            queue_relevant_changed = True
         item.client_address_id = data["client_address_id"]
 
     if "scheduled_pickup_at" in data:
+        if item.scheduled_pickup_at != data["scheduled_pickup_at"]:
+            queue_relevant_changed = True
         item.scheduled_pickup_at = data["scheduled_pickup_at"]
     if "service_label" in data:
+        if item.service_label != data["service_label"]:
+            queue_relevant_changed = True
         item.service_label = data["service_label"]
     if "status" in data:
         if item.status != data["status"]:
             item.status = data["status"]
             status_changed = True
+            queue_relevant_changed = True
     if "transaction_id" in data:
+        if item.transaction_id != data["transaction_id"]:
+            queue_relevant_changed = True
         item.transaction_id = data["transaction_id"]
 
     db.session.commit()
@@ -206,6 +218,12 @@ def update(item_id):
         _emit_queue_for_status_and_all(
             socketio,
             statuses=[old_status, item.status],
+        )
+    elif queue_relevant_changed:
+        socketio = _get_socketio()
+        _emit_queue_for_status_and_all(
+            socketio,
+            statuses=[item.status],
         )
 
     return jsonify(schema.dump(item)), 200
