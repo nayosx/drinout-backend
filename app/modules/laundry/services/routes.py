@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from sqlalchemy import func
 from db import db
 from models.laundry_service import LaundryService
 from models.laundry_activity_log import LaundryActivityLog
@@ -28,6 +29,19 @@ def map_status_to_log_enum(status):
 
 def _get_socketio():
     return current_app.extensions.get("socketio")
+
+
+def _sync_pending_order_for_status(item: LaundryService):
+    # `pending_order` only applies to PENDING queue ordering.
+    if item.status != "PENDING":
+        item.pending_order = None
+
+
+def _next_pending_order() -> int:
+    current_max = db.session.query(func.max(LaundryService.pending_order)).filter(
+        LaundryService.status == "PENDING"
+    ).scalar()
+    return (current_max or 0) + 1
 
 
 def _emit_queue_for_status_and_all(socketio, statuses):
@@ -131,6 +145,10 @@ def create():
         transaction_id=data.get("transaction_id"),
         created_by_user_id=current_user_id
     )
+    if item.status == "PENDING":
+        item.pending_order = _next_pending_order()
+    else:
+        _sync_pending_order_for_status(item)
     db.session.add(item)
     db.session.commit()
 
@@ -192,6 +210,10 @@ def update(item_id):
     if "status" in data:
         if item.status != data["status"]:
             item.status = data["status"]
+            if old_status != "PENDING" and item.status == "PENDING":
+                item.pending_order = _next_pending_order()
+            else:
+                _sync_pending_order_for_status(item)
             status_changed = True
             queue_relevant_changed = True
     if "transaction_id" in data:
@@ -264,6 +286,10 @@ def update_status(item_id):
     old_status = item.status
 
     item.status = new_status
+    if old_status != "PENDING" and item.status == "PENDING":
+        item.pending_order = _next_pending_order()
+    else:
+        _sync_pending_order_for_status(item)
     db.session.commit()
 
     log = LaundryActivityLog(
