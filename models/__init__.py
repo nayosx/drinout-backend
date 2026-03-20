@@ -19,3 +19,4 @@ from .laundry_processing_step import LaundryProcessingStep
 from .laundry_delivery import LaundryDelivery
 from .laundry_activity_log import LaundryActivityLog
 from .laundry_service_log import LaundryServiceLog
+from .garment_type import GarmentType

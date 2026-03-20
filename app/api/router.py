@@ -16,6 +16,7 @@ from app.modules.laundry.services.routes import laundry_service_bp
 from app.modules.laundry.deliveries.routes import laundry_delivery_bp
 from app.modules.laundry.processing_steps.routes import processing_step_bp
 from app.modules.laundry.logs.routes import laundry_service_log_bp
+from app.modules.laundry.garment_types.routes import garment_type_bp
 
 from app.modules.laundry.queue.socket import register_laundry_queue_socket
 
@@ -39,6 +40,7 @@ def register_blueprints(app):
     app.register_blueprint(laundry_delivery_bp)
     app.register_blueprint(processing_step_bp)
     app.register_blueprint(laundry_service_log_bp)
+    app.register_blueprint(garment_type_bp)
 
 
 def register_sockets(socketio):
