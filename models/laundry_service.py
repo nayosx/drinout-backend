@@ -1,5 +1,5 @@
 from db import db
-from sqlalchemy import Column, Integer, DateTime, Enum, ForeignKey, func
+from sqlalchemy import Column, Integer, DateTime, Enum, ForeignKey, Text, Numeric, func
 from sqlalchemy.orm import relationship
 
 class LaundryService(db.Model):
@@ -25,6 +25,8 @@ class LaundryService(db.Model):
     )
     service_label = Column(Enum("NORMAL", "EXPRESS"), nullable=False, default="NORMAL")
     transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)
+    weight_lb = Column(Numeric(10, 2), nullable=True)
+    notes = Column(Text, nullable=True)
     created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
@@ -39,6 +41,20 @@ class LaundryService(db.Model):
         back_populates="laundry_service",
         order_by="LaundryServiceLog.created_at",
         cascade="all, delete-orphan"
+    )
+    items = relationship(
+        "LaundryServiceItem",
+        back_populates="laundry_service",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="LaundryServiceItem.id",
+    )
+    extras = relationship(
+        "LaundryServiceExtra",
+        back_populates="laundry_service",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="LaundryServiceExtra.id",
     )
 
     def __repr__(self):

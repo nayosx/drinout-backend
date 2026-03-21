@@ -20,3 +20,6 @@ from .laundry_delivery import LaundryDelivery
 from .laundry_activity_log import LaundryActivityLog
 from .laundry_service_log import LaundryServiceLog
 from .garment_type import GarmentType
+from .laundry_service_item import LaundryServiceItem
+from .service_extra_type import ServiceExtraType
+from .laundry_service_extra import LaundryServiceExtra
