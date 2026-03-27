@@ -173,3 +173,7 @@ source
 # Environments / secrets
 .env
 .env.*
+
+# SQL artifacts
+*.sql
+sql/*.sql

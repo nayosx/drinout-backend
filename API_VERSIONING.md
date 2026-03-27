@@ -155,10 +155,10 @@ Objeto esperado:
 
 ```json
 {
-  "name": "Zapatos",
-  "icon": "shoe",
+  "name": "Alfombra grande",
+  "icon": "rug",
   "is_frequent": true,
-  "category": "FOOTWEAR",
+  "category": "RUG",
   "active": true,
   "default_unit_type": "UNIT",
   "default_unit_price": 4.5,
@@ -192,9 +192,9 @@ Devuelve una lista como esta:
 [
   {
     "id": 1,
-    "code": "IRONING",
-    "name": "Planchado",
-    "unit_label": "prenda",
+    "code": "GENERIC_SOFTENER",
+    "name": "Suavisante generico",
+    "unit_label": "unidad",
     "default_unit_price": null,
     "active": true,
     "display_order": 1,
@@ -289,19 +289,13 @@ Objeto esperado:
       "service_extra_type_id": 1,
       "quantity": 8,
       "unit_price": 0.35,
-      "notes": "Planchado de 8 prendas"
+      "notes": "Suavisante generico para 8 prendas"
     },
     {
       "service_extra_type_id": 2,
       "quantity": 2,
       "unit_price": 0.5,
-      "notes": "Perlitas de olor"
-    },
-    {
-      "service_extra_type_id": 4,
-      "quantity": 1,
-      "unit_price": 0.25,
-      "notes": "Aplicacion de vinagre"
+      "notes": "Suavitel"
     }
   ]
 }
@@ -343,7 +337,7 @@ Valores validos:
   "service_extra_type_id": 1,
   "quantity": 8,
   "unit_price": 0.35,
-  "notes": "Planchado de 8 prendas"
+  "notes": "Suavisante generico para 8 prendas"
 }
 ```
 
@@ -369,10 +363,10 @@ Ejemplo:
   ],
   "extras": [
     {
-      "service_extra_type_id": 3,
+      "service_extra_type_id": 2,
       "quantity": 1,
       "unit_price": 1.0,
-      "notes": "Remojo aplicado"
+      "notes": "Suavitel aplicado"
     }
   ]
 }
