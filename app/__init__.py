@@ -30,9 +30,13 @@ def create_app():
 
     CORS(
         app,
-        resources={r"/*": {"origins": "*"}},
-        allow_headers=["Content-Type", "Authorization"],
-        methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        resources={r"/*": {"origins": app.config["CORS_ORIGINS"]}},
+        allow_headers=app.config["CORS_ALLOW_HEADERS"],
+        expose_headers=app.config["CORS_EXPOSE_HEADERS"],
+        methods=app.config["CORS_METHODS"],
+        supports_credentials=app.config["CORS_SUPPORTS_CREDENTIALS"],
+        max_age=app.config["CORS_MAX_AGE"],
+        vary_header=True,
     )
 
     JWTManager(app)
