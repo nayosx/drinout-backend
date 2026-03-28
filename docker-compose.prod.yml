@@ -1,3 +1,5 @@
+name: drinout-prod
+
 services:
   drinout:
     build: .
@@ -15,7 +17,7 @@ services:
     command: gunicorn -w 2 -b 0.0.0.0:5000 "main:application"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
       timeout: 10s
       retries: 3

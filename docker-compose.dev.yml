@@ -1,3 +1,5 @@
+name: drinout-dev
+
 services:
   drinout:
     build: .
