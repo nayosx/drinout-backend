@@ -11,6 +11,11 @@ class Order(db.Model):
         db.Integer,
         db.ForeignKey("weight_pricing_profiles.id", onupdate="CASCADE"),
     )
+    payment_type_id = db.Column(
+        db.Integer,
+        db.ForeignKey("payment_types.id", onupdate="CASCADE"),
+        nullable=False,
+    )
     delivery_zone_id = db.Column(
         db.Integer,
         db.ForeignKey("delivery_zones.id", onupdate="CASCADE"),
@@ -31,6 +36,11 @@ class Order(db.Model):
     delivery_fee_override_reason = db.Column(db.String(255))
     global_discount_amount = db.Column(db.Numeric(10, 2), nullable=False, default=0)
     global_discount_reason = db.Column(db.String(255))
+    subtotal_before_payment_surcharge = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+    payment_type_name_snapshot = db.Column(db.String(100), nullable=False)
+    payment_surcharge_type_snapshot = db.Column(db.String(20), nullable=False)
+    payment_surcharge_value_snapshot = db.Column(db.Numeric(10, 4), nullable=False, default=0)
+    payment_surcharge_amount = db.Column(db.Numeric(10, 2), nullable=False, default=0)
     total_amount = db.Column(db.Numeric(10, 2), nullable=False, default=0)
     notes = db.Column(db.Text)
     charged_by_user_id = db.Column(db.Integer, db.ForeignKey("users.id", onupdate="CASCADE"))
@@ -51,6 +61,7 @@ class Order(db.Model):
     client = db.relationship("Client", lazy="selectin")
     client_address = db.relationship("ClientAddress", lazy="selectin")
     pricing_profile = db.relationship("WeightPricingProfile", back_populates="orders", lazy="selectin")
+    payment_type = db.relationship("PaymentType", lazy="selectin")
     delivery_zone = db.relationship("DeliveryZone", back_populates="orders", lazy="selectin")
     delivery_zone_price = db.relationship("DeliveryZonePrice", back_populates="orders", lazy="selectin")
     charged_by_user = db.relationship("User", foreign_keys=[charged_by_user_id], lazy="selectin")

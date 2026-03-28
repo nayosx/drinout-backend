@@ -12,7 +12,11 @@ payment_type_list_schema = PaymentTypeSchema(many=True)
 @payment_type_bp.route("", methods=["GET"])
 @jwt_required()
 def get_all_payment_types():
-    ptypes = PaymentType.query.all()
+    query = PaymentType.query
+    is_active = request.args.get("is_active")
+    if is_active is not None:
+        query = query.filter(PaymentType.is_active == (is_active.lower() == "true"))
+    ptypes = query.order_by(PaymentType.sort_order.is_(None), PaymentType.sort_order.asc(), PaymentType.name.asc()).all()
     return jsonify(payment_type_list_schema.dump(ptypes)), 200
 
 @payment_type_bp.route("/<int:payment_type_id>", methods=["GET"])
@@ -32,8 +36,13 @@ def create_payment_type():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
     new_ptype = PaymentType(
+        code=data["code"],
         name=data["name"],
-        description=data["description"]
+        description=data["description"],
+        surcharge_type=data["surcharge_type"],
+        surcharge_value=data["surcharge_value"],
+        is_active=data.get("is_active", True),
+        sort_order=data.get("sort_order"),
     )
     db.session.add(new_ptype)
     db.session.commit()
@@ -55,8 +64,18 @@ def update_payment_type(payment_type_id):
         return jsonify({"error": str(e)}), 400
     if "name" in data:
         ptype.name = data["name"]
+    if "code" in data:
+        ptype.code = data["code"]
     if "description" in data:
         ptype.description = data["description"]
+    if "surcharge_type" in data:
+        ptype.surcharge_type = data["surcharge_type"]
+    if "surcharge_value" in data:
+        ptype.surcharge_value = data["surcharge_value"]
+    if "is_active" in data:
+        ptype.is_active = data["is_active"]
+    if "sort_order" in data:
+        ptype.sort_order = data["sort_order"]
     db.session.commit()
     return jsonify({
         "message": "Payment type updated",

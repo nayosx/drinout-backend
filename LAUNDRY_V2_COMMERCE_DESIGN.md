@@ -11,6 +11,7 @@
 - `extras_catalog`: adicionales cobrables por cantidad.
 - `delivery_zones`: catalogo de zonas.
 - `delivery_zone_prices`: historial de tarifas por zona.
+- `payment_types`: metodos de pago parametrizables con recargo configurable.
 - `weight_pricing_profiles`: configuracion comercial del motor por peso.
 - `weight_pricing_tiers`: tiers configurables del perfil por peso.
 - `orders`: pedido comercial con totales finales e historial economico.
@@ -26,6 +27,7 @@
 - Cada item puede guardar precio sugerido, recomendado y final.
 - Un override manual nunca borra el recomendado del motor.
 - Delivery se guarda con precio sugerido y final en el pedido.
+- El metodo de pago se parametriza en catalogo y el pedido guarda snapshot del recargo aplicado.
 - Descuentos se guardan por item y a nivel global.
 - El cobro queda ligado al usuario que lo realizo.
 
@@ -44,6 +46,7 @@
 - `service_categories 1 --- n services`
 - `services 1 --- n service_price_options`
 - `delivery_zones 1 --- n delivery_zone_prices`
+- `payment_types 1 --- n orders`
 - `weight_pricing_profiles 1 --- n weight_pricing_tiers`
 - `clients 1 --- n orders`
 - `orders 1 --- n order_items`
@@ -177,6 +180,9 @@ Las pruebas minimas quedaron en [tests/test_weight_pricing.py](/home/ness/Dev/Py
 - `POST /v2/orders`
 - `GET /v2/orders/:id`
 - `PATCH /v2/orders/:id`
+- `GET /payment_types?is_active=`
+- `POST /payment_types`
+- `PUT /payment_types/:id`
 
 ## Fase 7
 
@@ -187,6 +193,7 @@ Las pruebas minimas quedaron en [tests/test_weight_pricing.py](/home/ness/Dev/Py
   "client_id": 12,
   "client_address_id": 33,
   "pricing_profile_id": 1,
+  "payment_type_id": 1,
   "delivery_zone_id": 2,
   "delivery_fee_final": "3.50",
   "delivery_fee_override_reason": "Ajuste por zona extendida",
@@ -259,6 +266,7 @@ Las pruebas minimas quedaron en [tests/test_weight_pricing.py](/home/ness/Dev/Py
 
 - impedir pedidos sin items
 - validar que `client_address_id` pertenezca al cliente
+- validar que `payment_type_id` exista y este activo
 - validar que price option pertenezca al servicio
 - obligar `weight_lb` en servicios `WEIGHT`
 - obligar motivo cuando haya override manual relevante
@@ -270,6 +278,7 @@ Las pruebas minimas quedaron en [tests/test_weight_pricing.py](/home/ness/Dev/Py
 - nunca recalcular pedidos historicos desde catalogo
 - siempre persistir snapshots de nombres, labels y precios
 - mantener delivery sugerido y final en el pedido
+- guardar snapshot del metodo de pago y del recargo aplicado
 - guardar snapshot del motor por peso por item
 
 ### Manejo correcto de dinero

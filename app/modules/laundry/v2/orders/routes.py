@@ -16,6 +16,7 @@ from models.order_extra_item import OrderExtraItem
 from models.order_item import OrderItem
 from models.order_status_history import OrderStatusHistory
 from models.order_weight_pricing_snapshot import OrderWeightPricingSnapshot
+from models.payment_type import PaymentType
 from models.service_price_option import ServicePriceOption
 from models.user import User
 from models.weight_pricing_profile import WeightPricingProfile
@@ -50,6 +51,7 @@ def _order_query():
         selectinload(Order.extra_items),
         selectinload(Order.status_history),
         selectinload(Order.pricing_profile),
+        selectinload(Order.payment_type),
         selectinload(Order.delivery_zone),
         selectinload(Order.delivery_zone_price),
         selectinload(Order.client),
@@ -91,6 +93,15 @@ def _validate_user(user_id, field_name):
     return None
 
 
+def _validate_payment_type(payment_type_id):
+    payment_type = PaymentType.query.get(payment_type_id)
+    if not payment_type:
+        return None, ({"error": "Payment type not found"}, 404)
+    if not payment_type.is_active:
+        return None, ({"error": "Payment type is inactive"}, 400)
+    return payment_type, None
+
+
 def _resolve_profile(profile_id):
     if profile_id:
         profile = WeightPricingProfile.query.get(profile_id)
@@ -103,6 +114,15 @@ def _resolve_profile(profile_id):
         .first()
     )
     return profile, None
+
+
+def _calculate_payment_surcharge(base_total, payment_type):
+    surcharge_value = money(payment_type.surcharge_value)
+    if payment_type.surcharge_type == "FIXED":
+        surcharge_amount = money(surcharge_value)
+    else:
+        surcharge_amount = money(base_total * (Decimal(str(payment_type.surcharge_value)) / Decimal("100")))
+    return surcharge_amount
 
 
 def _calculate_line_subtotal(quantity, unit_price, discount_amount):
@@ -372,6 +392,11 @@ def create():
         payload, status_code = profile_error
         return jsonify(payload), status_code
 
+    payment_type, payment_type_error = _validate_payment_type(data["payment_type_id"])
+    if payment_type_error:
+        payload, status_code = payment_type_error
+        return jsonify(payload), status_code
+
     delivery_zone = None
     delivery_zone_price = None
     delivery_fee_suggested = Decimal("0.00")
@@ -390,6 +415,7 @@ def create():
         client_id=data["client_id"],
         client_address_id=data.get("client_address_id"),
         pricing_profile_id=pricing_profile.id if pricing_profile else None,
+        payment_type_id=payment_type.id,
         delivery_zone_id=delivery_zone.id if delivery_zone else None,
         delivery_zone_price_id=delivery_zone_price.id if delivery_zone_price else None,
         status=data["status"],
@@ -403,6 +429,9 @@ def create():
         ),
         global_discount_amount=money(data.get("global_discount_amount", 0)),
         global_discount_reason=data.get("global_discount_reason"),
+        payment_type_name_snapshot=payment_type.name,
+        payment_surcharge_type_snapshot=payment_type.surcharge_type,
+        payment_surcharge_value_snapshot=payment_type.surcharge_value,
         notes=data.get("notes"),
         charged_by_user_id=charged_by_user_id,
         created_by_user_id=current_user_id,
@@ -449,15 +478,17 @@ def create():
 
     order.service_subtotal = money(service_subtotal)
     order.extras_subtotal = money(extras_subtotal)
-    order.total_amount = money(
+    order.subtotal_before_payment_surcharge = money(
         order.service_subtotal
         + order.extras_subtotal
         + order.delivery_fee_final
         - money(order.global_discount_amount)
     )
-    if order.total_amount < 0:
+    if order.subtotal_before_payment_surcharge < 0:
         db.session.rollback()
         return jsonify({"error": "global_discount_amount cannot exceed order total"}), 400
+    order.payment_surcharge_amount = _calculate_payment_surcharge(order.subtotal_before_payment_surcharge, payment_type)
+    order.total_amount = money(order.subtotal_before_payment_surcharge + order.payment_surcharge_amount)
 
     _create_status_history(order, None, order.status, current_user_id, "Initial status")
     db.session.commit()
@@ -488,6 +519,17 @@ def update(item_id):
             return jsonify(payload), status_code
         item.charged_by_user_id = data["charged_by_user_id"]
 
+    payment_type = item.payment_type
+    if "payment_type_id" in data:
+        payment_type, payment_type_error = _validate_payment_type(data["payment_type_id"])
+        if payment_type_error:
+            payload, status_code = payment_type_error
+            return jsonify(payload), status_code
+        item.payment_type_id = payment_type.id
+        item.payment_type_name_snapshot = payment_type.name
+        item.payment_surcharge_type_snapshot = payment_type.surcharge_type
+        item.payment_surcharge_value_snapshot = payment_type.surcharge_value
+
     if "delivery_fee_final" in data:
         new_delivery_fee = money(data["delivery_fee_final"])
         item.delivery_fee_final = new_delivery_fee
@@ -511,14 +553,16 @@ def update(item_id):
         item.status = data["status"]
 
     item.updated_by_user_id = current_user_id
-    item.total_amount = money(
+    item.subtotal_before_payment_surcharge = money(
         money(item.service_subtotal)
         + money(item.extras_subtotal)
         + money(item.delivery_fee_final)
         - money(item.global_discount_amount)
     )
-    if item.total_amount < 0:
+    if item.subtotal_before_payment_surcharge < 0:
         return jsonify({"error": "global_discount_amount cannot exceed order total"}), 400
+    item.payment_surcharge_amount = _calculate_payment_surcharge(item.subtotal_before_payment_surcharge, payment_type)
+    item.total_amount = money(item.subtotal_before_payment_surcharge + item.payment_surcharge_amount)
 
     if old_status != item.status:
         _create_status_history(item, old_status, item.status, current_user_id, "Status update")
