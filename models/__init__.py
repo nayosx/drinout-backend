@@ -35,3 +35,4 @@ from .order_item import OrderItem
 from .order_extra_item import OrderExtraItem
 from .order_status_history import OrderStatusHistory
 from .order_weight_pricing_snapshot import OrderWeightPricingSnapshot
+from .global_setting import GlobalSetting

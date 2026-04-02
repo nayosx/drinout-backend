@@ -144,3 +144,25 @@ Si el usuario escribe otro valor en `delivery_fee_final`, el backend lo guarda c
 
 - sugerido por zona
 - final cobrado
+
+## Configuracion global relacionada
+
+Ya existe una tabla de parametros globales en backend para configuraciones transversales futuras.
+
+Parametro inicial creado:
+
+- `delivery_price_per_km = 0.50`
+
+Este parametro vive en `global_settings` y se expone por API en:
+
+- `GET /v2/global-settings`
+- `GET /v2/global-settings/delivery_price_per_km`
+
+Importante:
+
+- por ahora Angular no debe usar este valor como fuente principal del cobro final
+- hoy el flujo principal sigue siendo:
+  - sugerido por zona
+  - ultimo costo cobrado al cliente o direccion
+  - valor editable final
+- `delivery_price_per_km` queda listo para una fase posterior donde el frontend o backend calculen delivery por distancia recorrida
