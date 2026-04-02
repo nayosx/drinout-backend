@@ -49,6 +49,44 @@ class WeightPricingEngine:
         if not self.tiers:
             raise ValueError("The selected profile has no active tiers")
 
+        if self.strategy == "PACKAGE_BLOCKS":
+            selected = self._make_package_blocks_option(weight)
+            serialized_options = [self._serialize_option(selected, selected["key"])]
+            decision_reason = self._build_decision_reason(
+                weight,
+                selected,
+                serialized_options,
+                selected["total_price"],
+                selected["total_price"],
+            )
+            return {
+                "profile_id": self.profile.id,
+                "profile_name": self.profile.name,
+                "weight_lb": str(weight),
+                "strategy_selected": self.strategy,
+                "selected_price": str(selected["total_price"]),
+                "recommended_price": str(selected["total_price"]),
+                "selected_tier_id": selected["tier"].id if selected["tier"] else None,
+                "selected_tier_max_weight_lb": (
+                    str(to_decimal(selected["tier"].max_weight_lb, WEIGHT_STEP))
+                    if selected["tier"]
+                    else None
+                ),
+                "selected_option_type": selected["option_type"],
+                "selected_base_price": str(selected["tier_price"]) if selected["tier_price"] is not None else None,
+                "allow_manual_override": self.profile.allow_manual_override,
+                "decision_reason": decision_reason,
+                "options_evaluated": serialized_options,
+                "lowest_valid_price": str(selected["total_price"]),
+                "highest_valid_price": str(selected["total_price"]),
+                "difference_selected_vs_lowest": str(to_decimal(0)),
+                "difference_selected_vs_highest": str(to_decimal(0)),
+                "compare_all_tiers": self.profile.compare_all_tiers,
+                "round_mode": self.round_mode,
+                "evaluated_options_count": len(serialized_options),
+                "options_evaluated_json": json.dumps(serialized_options, ensure_ascii=True),
+            }
+
         options = self._build_options(weight)
         selected = self._select_option(weight, options)
         serialized_options = [self._serialize_option(option, selected["key"]) for option in options]
@@ -160,6 +198,63 @@ class WeightPricingEngine:
         if self.round_mode == "floor":
             return Decimal(str(math.floor(float(extra_lb))))
         return to_decimal(extra_lb, WEIGHT_STEP)
+
+    def _find_tier_by_weight(self, expected_weight):
+        expected_weight = to_decimal(expected_weight, WEIGHT_STEP)
+        return next(
+            (
+                tier for tier in self.tiers
+                if to_decimal(tier.max_weight_lb, WEIGHT_STEP) == expected_weight
+            ),
+            None,
+        )
+
+    def _make_package_blocks_option(self, weight):
+        tier_15 = self._find_tier_by_weight("15.00")
+        tier_25 = self._find_tier_by_weight("25.00")
+        if not tier_15 or not tier_25:
+            raise ValueError("PACKAGE_BLOCKS strategy requires active 15 lb and 25 lb tiers")
+
+        blocks_25 = int(weight // Decimal("25.00"))
+        remainder_after_25 = weight - (Decimal(blocks_25) * Decimal("25.00"))
+        blocks_15 = int(remainder_after_25 // Decimal("15.00"))
+        remainder_after_15 = remainder_after_25 - (Decimal(blocks_15) * Decimal("15.00"))
+
+        extra_charge = to_decimal(0)
+        extra_lb = to_decimal(0, WEIGHT_STEP)
+        remainder_label = "sin remanente"
+
+        if remainder_after_15 > 0:
+            if remainder_after_15 <= Decimal("7.00"):
+                extra_lb = self._round_extra_lb(remainder_after_15)
+                extra_charge = to_decimal(extra_lb * self.extra_lb_price)
+                remainder_label = f"{extra_lb} lb extra"
+            else:
+                blocks_15 += 1
+                remainder_label = "remanente redondeado a bloque de 15 lb"
+
+        total_25 = to_decimal(Decimal(blocks_25) * to_decimal(tier_25.price))
+        total_15 = to_decimal(Decimal(blocks_15) * to_decimal(tier_15.price))
+        total_price = to_decimal(total_25 + total_15 + extra_charge)
+
+        selected_tier = tier_25 if blocks_25 > 0 else tier_15
+        selected_base_price = to_decimal(selected_tier.price) if selected_tier else None
+        reason = (
+            f"Estrategia PACKAGE_BLOCKS: {blocks_25} bloque(s) de 25 lb, "
+            f"{blocks_15} bloque(s) de 15 lb y {remainder_label}. "
+            f"Total {total_price}."
+        )
+
+        return {
+            "key": f"PACKAGE_BLOCKS:{weight}:{total_price}",
+            "option_type": "PACKAGE_BLOCKS",
+            "tier": selected_tier,
+            "tier_price": selected_base_price,
+            "extra_lb": extra_lb,
+            "extra_charge": extra_charge,
+            "total_price": total_price,
+            "reason": reason,
+        }
 
     def _select_option(self, weight, options):
         sorted_by_total = sorted(options, key=lambda option: (option["total_price"], option["tier"].id if option["tier"] else 0))

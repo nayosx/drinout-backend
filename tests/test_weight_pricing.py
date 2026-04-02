@@ -85,6 +85,53 @@ class WeightPricingEngineTests(unittest.TestCase):
         self.assertTrue(result["allow_manual_override"])
         self.assertGreaterEqual(result["evaluated_options_count"], 2)
 
+    def test_package_blocks_prices_50_lb(self):
+        profile = FakeProfile(strategy="PACKAGE_BLOCKS", compare_all_tiers=False)
+        engine = WeightPricingEngine(profile)
+
+        result = engine.quote("50.00")
+
+        self.assertEqual(result["selected_price"], "29.98")
+        self.assertEqual(result["selected_option_type"], "PACKAGE_BLOCKS")
+        self.assertEqual(result["selected_tier_max_weight_lb"], "25.00")
+
+    def test_package_blocks_prices_65_lb(self):
+        profile = FakeProfile(strategy="PACKAGE_BLOCKS", compare_all_tiers=False)
+        engine = WeightPricingEngine(profile)
+
+        result = engine.quote("65.00")
+
+        self.assertEqual(result["selected_price"], "39.97")
+        self.assertIn("1 bloque(s) de 15 lb", result["decision_reason"])
+
+    def test_package_blocks_prices_68_lb(self):
+        profile = FakeProfile(strategy="PACKAGE_BLOCKS", compare_all_tiers=False)
+        engine = WeightPricingEngine(profile)
+
+        result = engine.quote("68.00")
+
+        self.assertEqual(result["selected_price"], "42.67")
+        self.assertEqual(result["options_evaluated"][0]["extra_lb"], "3.00")
+        self.assertEqual(result["options_evaluated"][0]["extra_charge"], "2.70")
+
+    def test_package_blocks_rounds_remainder_8_to_14_into_15_lb_block(self):
+        profile = FakeProfile(strategy="PACKAGE_BLOCKS", compare_all_tiers=False)
+        engine = WeightPricingEngine(profile)
+
+        result = engine.quote("60.00")
+
+        self.assertEqual(result["selected_price"], "39.97")
+        self.assertIn("remanente redondeado a bloque de 15 lb", result["decision_reason"])
+
+    def test_package_blocks_prices_100_lb(self):
+        profile = FakeProfile(strategy="PACKAGE_BLOCKS", compare_all_tiers=False)
+        engine = WeightPricingEngine(profile)
+
+        result = engine.quote("100.00")
+
+        self.assertEqual(result["selected_price"], "59.96")
+        self.assertEqual(result["difference_selected_vs_lowest"], "0.00")
+
 
 if __name__ == "__main__":
     unittest.main()

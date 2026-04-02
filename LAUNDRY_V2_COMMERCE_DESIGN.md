@@ -31,15 +31,15 @@
 - Descuentos se guardan por item y a nivel global.
 - El cobro queda ligado al usuario que lo realizo.
 
-### Pricing por peso orientado a maximizar ingresos
+### Pricing por peso por bloques comerciales
 
-- El perfil principal usa `MAX_REVENUE`.
-- Para un peso dado el motor evalua alternativas comerciales validas.
-- Las alternativas incluyen tier que cubre el peso, base mas extra y todos los tiers si `compare_all_tiers` esta activo.
-- Bajo `MAX_REVENUE` se elige la alternativa con el mayor total valido.
-- El resultado retorna opcion elegida, opciones evaluadas, diferencias monetarias y permiso de override.
+- El perfil principal usa `PACKAGE_BLOCKS`.
+- Cada bloque completo de `25 lb` cuesta `14.99`.
+- Del remanente, cada bloque completo de `15 lb` cuesta `9.99`.
+- Del remanente final, `1` a `7 lb` se cobran a `0.90` por libra.
+- Si el remanente final queda entre `8` y `14 lb`, se redondea a un bloque de `15 lb`.
+- El resultado retorna total recomendado, motivo comercial y permiso de override.
 - Si hay override manual, el snapshot conserva recomendado, final, usuario y motivo.
-- La razon de decision ahora enumera las alternativas evaluadas y el por que comercial de la seleccion.
 
 ### Diagrama relacional en texto
 
@@ -67,7 +67,7 @@ Incluye:
 - llaves foraneas
 - indices de consulta
 - seed comercial inicial
-- perfil principal `MAX_REVENUE`
+- perfil principal `PACKAGE_BLOCKS`
 - tiers iniciales `15 lb = 9.99` y `25 lb = 14.99`
 
 ## Fase 3

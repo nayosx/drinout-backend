@@ -7,7 +7,7 @@ class WeightPricingProfile(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), unique=True, nullable=False)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
-    strategy = db.Column(db.String(40), nullable=False, default="MAX_REVENUE")
+    strategy = db.Column(db.String(40), nullable=False, default="PACKAGE_BLOCKS")
     extra_lb_price = db.Column(db.Numeric(10, 2), nullable=False, default=0)
     auto_upgrade_enabled = db.Column(db.Boolean, nullable=False, default=False)
     auto_upgrade_margin = db.Column(db.Numeric(10, 2), nullable=False, default=0)
