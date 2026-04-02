@@ -9,7 +9,7 @@ from db import db
 from app.services.weight_pricing import WeightPricingEngine
 from models.catalog_service import CatalogService
 from models.client import Client, ClientAddress
-from models.delivery_zone import DeliveryZonePrice
+from models.delivery_zone import DeliveryZone, DeliveryZonePrice
 from models.extra_catalog import ExtraCatalog
 from models.order import Order
 from models.order_extra_item import OrderExtraItem
@@ -69,6 +69,20 @@ def _active_zone_price(zone_id):
         .order_by(DeliveryZonePrice.effective_from.desc(), DeliveryZonePrice.id.desc())
         .first()
     )
+
+
+def _latest_delivery_order(client_id, client_address_id=None):
+    query = Order.query.filter(Order.client_id == client_id)
+    if client_address_id is not None:
+        query = query.filter(Order.client_address_id == client_address_id)
+
+    query = query.filter(
+        (Order.delivery_zone_id.isnot(None))
+        | (Order.delivery_fee_suggested > Decimal("0.00"))
+        | (Order.delivery_fee_final > Decimal("0.00"))
+    )
+
+    return query.order_by(Order.created_at.desc(), Order.id.desc()).first()
 
 
 def _validate_client(client_id, client_address_id):
@@ -352,6 +366,64 @@ def get_all():
             "page": pagination.page,
             "per_page": pagination.per_page,
             "pages": pagination.pages,
+        }
+    ), 200
+
+
+@order_v2_bp.route("/delivery-fee-suggestion", methods=["GET"])
+@jwt_required()
+def get_delivery_fee_suggestion():
+    client_id = request.args.get("client_id", type=int)
+    client_address_id = request.args.get("client_address_id", type=int)
+    delivery_zone_id = request.args.get("delivery_zone_id", type=int)
+
+    if client_id is None:
+        return jsonify({"error": "client_id is required"}), 400
+
+    _, _, validation_error = _validate_client(client_id, client_address_id)
+    if validation_error:
+        payload, status_code = validation_error
+        return jsonify(payload), status_code
+
+    delivery_zone = None
+    delivery_zone_price = None
+    delivery_fee_suggested_by_zone = Decimal("0.00")
+    if delivery_zone_id is not None:
+        delivery_zone = DeliveryZone.query.get(delivery_zone_id)
+        if not delivery_zone:
+            return jsonify({"error": "Delivery zone not found"}), 404
+        delivery_zone_price = _active_zone_price(delivery_zone_id)
+        if delivery_zone_price:
+            delivery_fee_suggested_by_zone = money(delivery_zone_price.fee_amount)
+
+    last_order_for_address = None
+    if client_address_id is not None:
+        last_order_for_address = _latest_delivery_order(client_id, client_address_id)
+    last_order_for_client = _latest_delivery_order(client_id)
+
+    last_delivery_fee_for_address = money(last_order_for_address.delivery_fee_final) if last_order_for_address else Decimal("0.00")
+    last_delivery_fee_for_client = money(last_order_for_client.delivery_fee_final) if last_order_for_client else Decimal("0.00")
+    initial_delivery_fee_final = (
+        last_delivery_fee_for_address
+        if last_order_for_address
+        else last_delivery_fee_for_client
+    )
+
+    return jsonify(
+        {
+            "client_id": client_id,
+            "client_address_id": client_address_id,
+            "delivery_zone_id": delivery_zone_id,
+            "delivery_zone_name": delivery_zone.name if delivery_zone else None,
+            "delivery_zone_price_id": delivery_zone_price.id if delivery_zone_price else None,
+            "delivery_fee_suggested_by_zone": str(delivery_fee_suggested_by_zone),
+            "last_delivery_fee_final_for_client_address": str(last_delivery_fee_for_address),
+            "last_delivery_fee_final_for_client": str(last_delivery_fee_for_client),
+            "last_delivery_order_id_for_client_address": last_order_for_address.id if last_order_for_address else None,
+            "last_delivery_order_id_for_client": last_order_for_client.id if last_order_for_client else None,
+            "has_previous_delivery_for_client_address": last_order_for_address is not None,
+            "has_previous_delivery_for_client": last_order_for_client is not None,
+            "initial_delivery_fee_final": str(initial_delivery_fee_final),
         }
     ), 200
 
