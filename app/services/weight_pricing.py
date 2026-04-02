@@ -217,6 +217,10 @@ class WeightPricingEngine:
 
         blocks_25 = int(weight // Decimal("25.00"))
         remainder_after_25 = weight - (Decimal(blocks_25) * Decimal("25.00"))
+        if remainder_after_25 >= Decimal("20.00"):
+            blocks_25 += 1
+            remainder_after_25 = Decimal("0.00")
+
         blocks_15 = int(remainder_after_25 // Decimal("15.00"))
         remainder_after_15 = remainder_after_25 - (Decimal(blocks_15) * Decimal("15.00"))
 
@@ -239,11 +243,12 @@ class WeightPricingEngine:
 
         selected_tier = tier_25 if blocks_25 > 0 else tier_15
         selected_base_price = to_decimal(selected_tier.price) if selected_tier else None
-        reason = (
-            f"Estrategia PACKAGE_BLOCKS: {blocks_25} bloque(s) de 25 lb, "
-            f"{blocks_15} bloque(s) de 15 lb y {remainder_label}. "
-            f"Total {total_price}."
-        )
+        reason_parts = [f"Estrategia PACKAGE_BLOCKS: {blocks_25} bloque(s) de 25 lb"]
+        if remainder_after_25 == Decimal("0.00") and weight % Decimal("25.00") >= Decimal("20.00"):
+            reason_parts.append("remanente >= 20 lb redondeado a bloque de 25 lb")
+        else:
+            reason_parts.append(f"{blocks_15} bloque(s) de 15 lb y {remainder_label}")
+        reason = f"{', '.join(reason_parts)}. Total {total_price}."
 
         return {
             "key": f"PACKAGE_BLOCKS:{weight}:{total_price}",

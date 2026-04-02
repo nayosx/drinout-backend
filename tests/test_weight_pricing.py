@@ -114,6 +114,15 @@ class WeightPricingEngineTests(unittest.TestCase):
         self.assertEqual(result["options_evaluated"][0]["extra_lb"], "3.00")
         self.assertEqual(result["options_evaluated"][0]["extra_charge"], "2.70")
 
+    def test_package_blocks_rounds_remainder_20_or_more_into_25_lb_block(self):
+        profile = FakeProfile(strategy="PACKAGE_BLOCKS", compare_all_tiers=False)
+        engine = WeightPricingEngine(profile)
+
+        result = engine.quote("72.00")
+
+        self.assertEqual(result["selected_price"], "44.97")
+        self.assertIn("remanente >= 20 lb redondeado a bloque de 25 lb", result["decision_reason"])
+
     def test_package_blocks_rounds_remainder_8_to_14_into_15_lb_block(self):
         profile = FakeProfile(strategy="PACKAGE_BLOCKS", compare_all_tiers=False)
         engine = WeightPricingEngine(profile)
