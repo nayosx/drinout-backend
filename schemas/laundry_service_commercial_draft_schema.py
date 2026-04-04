@@ -5,7 +5,7 @@ from schemas.base import LocalDateTimeMixin
 
 class LaundryServiceCommercialDraftCreateSchema(Schema):
     payload = fields.Raw(required=True)
-    laundry_service_id = fields.Int(allow_none=True)
+    laundry_service_id = fields.Int(required=True)
     is_confirmed = fields.Bool(load_default=False)
     confirmed_at = fields.DateTime(allow_none=True)
     charged_by_user_id = fields.Int(allow_none=True)
@@ -48,4 +48,3 @@ class LaundryServiceCommercialDraftSchema(LocalDateTimeMixin, Schema):
     updated_by_user_id = fields.Int(allow_none=True, dump_only=True)
     created_at = fields.DateTime(dump_only=True)
     updated_at = fields.DateTime(dump_only=True)
-

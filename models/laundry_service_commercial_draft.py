@@ -8,7 +8,7 @@ class LaundryServiceCommercialDraft(db.Model):
     laundry_service_id = db.Column(
         db.Integer,
         db.ForeignKey("laundry_services.id", onupdate="CASCADE"),
-        nullable=True,
+        nullable=False,
     )
     client_id = db.Column(
         db.Integer,
@@ -73,4 +73,3 @@ class LaundryServiceCommercialDraft(db.Model):
         onupdate=db.func.now(),
         nullable=False,
     )
-

@@ -121,6 +121,15 @@ def get_one(item_id):
     return jsonify(_serialize(item)), 200
 
 
+@commercial_draft_v2_bp.route("/by-service/<int:laundry_service_id>", methods=["GET"])
+@jwt_required()
+def get_one_by_service(laundry_service_id):
+    item = LaundryServiceCommercialDraft.query.filter_by(
+        laundry_service_id=laundry_service_id
+    ).first_or_404()
+    return jsonify(_serialize(item)), 200
+
+
 @commercial_draft_v2_bp.route("", methods=["POST"])
 @jwt_required()
 def create():
@@ -132,9 +141,15 @@ def create():
     except Exception as exc:
         return jsonify({"error": str(exc)}), 400
 
+    existing = LaundryServiceCommercialDraft.query.filter_by(
+        laundry_service_id=data["laundry_service_id"]
+    ).first()
+    if existing:
+        return jsonify({"error": "Commercial draft already exists for this laundry_service_id"}), 400
+
     current_user_id = get_jwt_identity()
     item = LaundryServiceCommercialDraft(
-        laundry_service_id=data.get("laundry_service_id"),
+        laundry_service_id=data["laundry_service_id"],
         is_confirmed=data.get("is_confirmed", False),
         confirmed_at=data.get("confirmed_at"),
         charged_by_user_id=data.get("charged_by_user_id"),
@@ -161,6 +176,12 @@ def update(item_id):
         return jsonify({"error": str(exc)}), 400
 
     if "laundry_service_id" in data:
+        existing = LaundryServiceCommercialDraft.query.filter(
+            LaundryServiceCommercialDraft.laundry_service_id == data["laundry_service_id"],
+            LaundryServiceCommercialDraft.id != item.id,
+        ).first()
+        if existing:
+            return jsonify({"error": "Commercial draft already exists for this laundry_service_id"}), 400
         item.laundry_service_id = data["laundry_service_id"]
     if "is_confirmed" in data:
         item.is_confirmed = data["is_confirmed"]
@@ -172,6 +193,48 @@ def update(item_id):
         _apply_payload_snapshot(item, data["payload"])
 
     item.updated_by_user_id = get_jwt_identity()
+    db.session.commit()
+    return jsonify(_serialize(item)), 200
+
+
+@commercial_draft_v2_bp.route("/by-service/<int:laundry_service_id>", methods=["PUT"])
+@jwt_required()
+def upsert_by_service(laundry_service_id):
+    json_data = request.get_json()
+    if not json_data:
+        return jsonify({"error": "No input data provided"}), 400
+
+    payload = json_data.get("payload")
+    if payload is None:
+        return jsonify({"error": "payload is required"}), 400
+
+    item = LaundryServiceCommercialDraft.query.filter_by(
+        laundry_service_id=laundry_service_id
+    ).first()
+    current_user_id = get_jwt_identity()
+
+    if item is None:
+        item = LaundryServiceCommercialDraft(
+            laundry_service_id=laundry_service_id,
+            is_confirmed=bool(json_data.get("is_confirmed", False)),
+            confirmed_at=json_data.get("confirmed_at"),
+            charged_by_user_id=json_data.get("charged_by_user_id"),
+            created_by_user_id=current_user_id,
+            updated_by_user_id=current_user_id,
+            payload_json="{}",
+        )
+        _apply_payload_snapshot(item, payload)
+        db.session.add(item)
+        db.session.commit()
+        return jsonify(_serialize(item)), 201
+
+    item.is_confirmed = bool(json_data.get("is_confirmed", item.is_confirmed))
+    if "confirmed_at" in json_data:
+        item.confirmed_at = json_data.get("confirmed_at")
+    if "charged_by_user_id" in json_data:
+        item.charged_by_user_id = json_data.get("charged_by_user_id")
+    _apply_payload_snapshot(item, payload)
+    item.updated_by_user_id = current_user_id
     db.session.commit()
     return jsonify(_serialize(item)), 200
 
