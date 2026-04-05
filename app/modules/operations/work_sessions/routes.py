@@ -1,17 +1,61 @@
 from flask import Blueprint, request, jsonify, Response
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from datetime import datetime
+from datetime import datetime, timezone
 from db import db
+from models.global_setting import GlobalSetting
 from models.work_session import WorkSession
 from schemas.work_session_schema import WorkSessionSchema
 from sqlalchemy.sql import func, text, case, cast
 from sqlalchemy import Date
 import csv
 from io import StringIO
+from utils.datetime_utils import LOCAL_TZ
 
 work_session_bp = Blueprint("work_session_bp", __name__, url_prefix="/work_sessions")
 work_session_schema = WorkSessionSchema()
 work_session_list_schema = WorkSessionSchema(many=True)
+
+DEFAULT_DAILY_TARGET_TIME = "09:00:00"
+
+
+def _parse_hhmmss_to_seconds(value):
+    try:
+        hours_str, minutes_str, seconds_str = str(value).split(":")
+        hours = int(hours_str)
+        minutes = int(minutes_str)
+        seconds = int(seconds_str)
+        if minutes < 0 or minutes > 59 or seconds < 0 or seconds > 59 or hours < 0:
+            raise ValueError
+        return hours * 3600 + minutes * 60 + seconds
+    except Exception:
+        return _parse_hhmmss_to_seconds(DEFAULT_DAILY_TARGET_TIME)
+
+
+def _get_daily_target_time():
+    setting = GlobalSetting.query.filter_by(
+        key="work_session_daily_target_time",
+        is_active=True,
+    ).first()
+    if not setting or not setting.value:
+        return DEFAULT_DAILY_TARGET_TIME
+    return str(setting.value).strip() or DEFAULT_DAILY_TARGET_TIME
+
+
+def _local_date_range_to_utc(start_date_str, end_date_str):
+    start_local_naive = datetime.strptime(start_date_str, "%Y-%m-%d").replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    end_local_naive = datetime.strptime(end_date_str, "%Y-%m-%d").replace(
+        hour=23, minute=59, second=59, microsecond=999999
+    )
+
+    start_local = LOCAL_TZ.localize(start_local_naive)
+    end_local = LOCAL_TZ.localize(end_local_naive)
+
+    start_utc = start_local.astimezone(timezone.utc).replace(tzinfo=None)
+    end_utc = end_local.astimezone(timezone.utc).replace(tzinfo=None)
+    return start_utc, end_utc
+
 
 @work_session_bp.route("/start", methods=["POST"])
 @jwt_required()
@@ -69,9 +113,8 @@ def get_work_sessions():
 
     if start_date_str and end_date_str:
         try:
-            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").replace(hour=0, minute=0, second=0, microsecond=0)
-            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999999)
-            query = query.filter(WorkSession.login_time >= start_date, WorkSession.login_time <= end_date)
+            start_utc, end_utc = _local_date_range_to_utc(start_date_str, end_date_str)
+            query = query.filter(WorkSession.login_time >= start_utc, WorkSession.login_time <= end_utc)
         except ValueError:
             return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
 
@@ -100,20 +143,20 @@ def work_sessions_report():
         }), 400
 
     try:
-        start_date = datetime.strptime(start_date_str, "%Y-%m-%d").replace(hour=0, minute=0, second=0, microsecond=0)
-        end_date = datetime.strptime(end_date_str, "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999999)
+        start_utc, end_utc = _local_date_range_to_utc(start_date_str, end_date_str)
     except ValueError:
         return jsonify({
             "error": "Formato de fecha inválido. Usa YYYY-MM-DD"
         }), 400
 
-    report_data = _fetch_work_sessions_report(start_date, end_date)
+    report_data = _fetch_work_sessions_report(start_utc, end_utc)
     return _generate_csv_report(report_data, start_date_str, end_date_str) if download_csv else _generate_json_report(report_data)
 
-def _fetch_work_sessions_report(start_date, end_date):
+def _fetch_work_sessions_report(start_utc, end_utc):
     from models.user import User
 
-    jornada_standard_sec = 9 * 3600 + 30 * 60
+    daily_target_time = _get_daily_target_time()
+    jornada_standard_sec = _parse_hhmmss_to_seconds(daily_target_time)
     sessions = (
         db.session.query(
             WorkSession.user_id,
@@ -121,19 +164,20 @@ def _fetch_work_sessions_report(start_date, end_date):
             func.count(WorkSession.id).label("total_sesiones"),
             func.sec_to_time(func.sum(func.time_to_sec(func.timediff(WorkSession.logout_time, WorkSession.login_time)))).label("total_duracion"),
             func.sec_to_time(func.sum(case(
-                (func.timediff(WorkSession.logout_time, WorkSession.login_time) > text("'09:30:00'"),
+                (func.timediff(WorkSession.logout_time, WorkSession.login_time) > text(f"'{daily_target_time}'"),
                  func.time_to_sec(func.timediff(WorkSession.logout_time, WorkSession.login_time)) - jornada_standard_sec),
                 else_=0
             ))).label("total_extra"),
             func.sec_to_time(func.sum(case(
-                (func.timediff(WorkSession.logout_time, WorkSession.login_time) < text("'09:30:00'"),
+                (func.timediff(WorkSession.logout_time, WorkSession.login_time) < text(f"'{daily_target_time}'"),
                  jornada_standard_sec - func.time_to_sec(func.timediff(WorkSession.logout_time, WorkSession.login_time))),
                 else_=0
             ))).label("total_faltante"),
         )
         .join(User, WorkSession.user_id == User.id)
         .filter(
-            cast(WorkSession.login_time, Date).between(start_date.date(), end_date.date()),
+            WorkSession.login_time >= start_utc,
+            WorkSession.login_time <= end_utc,
             WorkSession.logout_time.isnot(None)
         )
         .group_by(WorkSession.user_id, User.name)
@@ -154,7 +198,10 @@ def _fetch_work_sessions_report(start_date, end_date):
     ]
 
 def _generate_json_report(report_data):
-    return jsonify({"report": report_data}), 200
+    return jsonify({
+        "daily_target_time": _get_daily_target_time(),
+        "report": report_data,
+    }), 200
 
 def _generate_csv_report(report_data, start_date_str, end_date_str):
     si = StringIO()
