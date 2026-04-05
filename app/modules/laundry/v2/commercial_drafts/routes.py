@@ -5,9 +5,13 @@ from decimal import Decimal, ROUND_HALF_UP
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
+from app.services.weight_pricing import WeightPricingEngine
 from db import db
+from models.catalog_service import CatalogService
 from models.laundry_service_commercial_draft import LaundryServiceCommercialDraft
 from models.laundry_service import LaundryService
+from models.service_price_option import ServicePriceOption
+from models.weight_pricing_profile import WeightPricingProfile
 from schemas.laundry_service_commercial_draft_schema import (
     LaundryServiceCommercialDraftCreateSchema,
     LaundryServiceCommercialDraftPatchSchema,
@@ -51,6 +55,86 @@ def _payload_root(payload):
     return payload if isinstance(payload, dict) else {}
 
 
+def _resolve_pricing_profile(profile_id):
+    if profile_id:
+        return WeightPricingProfile.query.get(profile_id)
+    return (
+        WeightPricingProfile.query.filter_by(is_active=True)
+        .order_by(WeightPricingProfile.id.asc())
+        .first()
+    )
+
+
+def _commercial_entry_has_positive_price(entry):
+    if not isinstance(entry, dict):
+        return False
+
+    manual_price = entry.get("manual_price")
+    if manual_price is not None and _to_decimal(manual_price) and _to_decimal(manual_price) > Decimal("0.00"):
+        return True
+
+    selected_price_option_id = entry.get("selected_price_option_id")
+    service_id = entry.get("service_id")
+    if selected_price_option_id is not None and service_id is not None:
+        option = ServicePriceOption.query.get(selected_price_option_id)
+        if option and option.service_id == service_id and _to_decimal(option.suggested_price) > Decimal("0.00"):
+            return True
+
+    if service_id is not None:
+        service = CatalogService.query.get(service_id)
+        if service and service.pricing_mode != "WEIGHT":
+            return True
+
+    return False
+
+
+def _draft_has_billable_companion_service(root):
+    pending_rows = root.get("commercial_capture_pending")
+    if not isinstance(pending_rows, list):
+        return False
+    return any(_commercial_entry_has_positive_price(row) for row in pending_rows)
+
+
+def _refresh_weight_pricing_preview(payload):
+    root = _payload_root(payload)
+    weight_lb = root.get("weight_lb")
+    if weight_lb in (None, ""):
+        return payload
+
+    profile = _resolve_pricing_profile(root.get("pricing_profile_id"))
+    if not profile:
+        return payload
+
+    allow_small_weight_by_lb = _draft_has_billable_companion_service(root)
+    quote = WeightPricingEngine(profile).quote(
+        weight_lb,
+        allow_small_weight_by_lb=allow_small_weight_by_lb,
+    )
+
+    preview = root.get("weight_pricing_preview")
+    if not isinstance(preview, dict):
+        preview = {}
+
+    preview.update(
+        {
+            "profile_id": quote["profile_id"],
+            "profile_name": quote["profile_name"],
+            "weight_lb": quote["weight_lb"],
+            "strategy_applied": quote["strategy_selected"],
+            "recommended_price": quote["recommended_price"],
+            "final_price": quote["recommended_price"],
+            "min_valid_price": quote["lowest_valid_price"],
+            "max_valid_price": quote["highest_valid_price"],
+            "allow_manual_override": quote["allow_manual_override"],
+            "business_reason": quote["decision_reason"],
+            "evaluated_options": quote["options_evaluated"],
+        }
+    )
+    root["weight_pricing_preview"] = preview
+    root["quoted_service_amount"] = quote["recommended_price"]
+    return payload
+
+
 def _get_laundry_service_or_404(laundry_service_id):
     item = LaundryService.query.get(laundry_service_id)
     if not item:
@@ -59,6 +143,7 @@ def _get_laundry_service_or_404(laundry_service_id):
 
 
 def _apply_payload_snapshot(item, payload):
+    payload = _refresh_weight_pricing_preview(payload)
     root = _payload_root(payload)
     preview = root.get("weight_pricing_preview") if isinstance(root.get("weight_pricing_preview"), dict) else {}
 
@@ -105,9 +190,18 @@ def _sync_laundry_service_from_payload(laundry_service, payload):
         laundry_service.notes = root.get("notes")
 
 
+def _normalized_payload(item):
+    payload = json.loads(item.payload_json)
+    return _refresh_weight_pricing_preview(payload)
+
+
 def _serialize(item):
     data = schema.dump(item)
-    data["payload"] = json.loads(item.payload_json)
+    payload = _normalized_payload(item)
+    root = _payload_root(payload)
+    data["payload"] = payload
+    if root.get("quoted_service_amount") is not None:
+        data["quoted_service_amount"] = str(_to_decimal(root.get("quoted_service_amount")))
     return data
 
 
