@@ -7,6 +7,7 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from db import db
 from models.laundry_service_commercial_draft import LaundryServiceCommercialDraft
+from models.laundry_service import LaundryService
 from schemas.laundry_service_commercial_draft_schema import (
     LaundryServiceCommercialDraftCreateSchema,
     LaundryServiceCommercialDraftPatchSchema,
@@ -50,6 +51,13 @@ def _payload_root(payload):
     return payload if isinstance(payload, dict) else {}
 
 
+def _get_laundry_service_or_404(laundry_service_id):
+    item = LaundryService.query.get(laundry_service_id)
+    if not item:
+        return None, ({"error": "LaundryService not found"}, 404)
+    return item, None
+
+
 def _apply_payload_snapshot(item, payload):
     root = _payload_root(payload)
     preview = root.get("weight_pricing_preview") if isinstance(root.get("weight_pricing_preview"), dict) else {}
@@ -70,9 +78,31 @@ def _apply_payload_snapshot(item, payload):
     item.delivery_fee_override_reason = root.get("delivery_fee_override_reason")
     item.global_discount_amount = _to_decimal(root.get("global_discount_amount"))
     item.global_discount_reason = root.get("global_discount_reason")
-    item.quoted_service_amount = _to_decimal(preview.get("final_price"))
+    item.quoted_service_amount = _to_decimal(root.get("quoted_service_amount"))
+    if item.quoted_service_amount is None:
+        item.quoted_service_amount = _to_decimal(preview.get("final_price"))
     item.notes = root.get("notes")
     item.payload_json = json.dumps(payload, ensure_ascii=True)
+
+
+def _sync_laundry_service_from_payload(laundry_service, payload):
+    root = _payload_root(payload)
+    if "client_id" in root:
+        laundry_service.client_id = root.get("client_id")
+    if "client_address_id" in root:
+        laundry_service.client_address_id = root.get("client_address_id")
+    if "scheduled_pickup_at" in root:
+        laundry_service.scheduled_pickup_at = _to_datetime(root.get("scheduled_pickup_at"))
+    if "status" in root:
+        laundry_service.status = root.get("status")
+    if "service_label" in root:
+        laundry_service.service_label = root.get("service_label")
+    if "transaction_id" in root:
+        laundry_service.transaction_id = root.get("transaction_id")
+    if "weight_lb" in root:
+        laundry_service.weight_lb = _to_decimal(root.get("weight_lb"))
+    if "notes" in root:
+        laundry_service.notes = root.get("notes")
 
 
 def _serialize(item):
@@ -147,6 +177,11 @@ def create():
     if existing:
         return jsonify({"error": "Commercial draft already exists for this laundry_service_id"}), 400
 
+    laundry_service, laundry_service_error = _get_laundry_service_or_404(data["laundry_service_id"])
+    if laundry_service_error:
+        payload, status_code = laundry_service_error
+        return jsonify(payload), status_code
+
     current_user_id = get_jwt_identity()
     item = LaundryServiceCommercialDraft(
         laundry_service_id=data["laundry_service_id"],
@@ -158,6 +193,7 @@ def create():
         payload_json="{}",
     )
     _apply_payload_snapshot(item, data["payload"])
+    _sync_laundry_service_from_payload(laundry_service, data["payload"])
     db.session.add(item)
     db.session.commit()
     return jsonify(_serialize(item)), 201
@@ -182,7 +218,16 @@ def update(item_id):
         ).first()
         if existing:
             return jsonify({"error": "Commercial draft already exists for this laundry_service_id"}), 400
+        laundry_service, laundry_service_error = _get_laundry_service_or_404(data["laundry_service_id"])
+        if laundry_service_error:
+            payload, status_code = laundry_service_error
+            return jsonify(payload), status_code
         item.laundry_service_id = data["laundry_service_id"]
+    else:
+        laundry_service, laundry_service_error = _get_laundry_service_or_404(item.laundry_service_id)
+        if laundry_service_error:
+            payload, status_code = laundry_service_error
+            return jsonify(payload), status_code
     if "is_confirmed" in data:
         item.is_confirmed = data["is_confirmed"]
     if "confirmed_at" in data:
@@ -191,6 +236,7 @@ def update(item_id):
         item.charged_by_user_id = data["charged_by_user_id"]
     if "payload" in data:
         _apply_payload_snapshot(item, data["payload"])
+        _sync_laundry_service_from_payload(laundry_service, data["payload"])
 
     item.updated_by_user_id = get_jwt_identity()
     db.session.commit()
@@ -212,6 +258,10 @@ def upsert_by_service(laundry_service_id):
         laundry_service_id=laundry_service_id
     ).first()
     current_user_id = get_jwt_identity()
+    laundry_service, laundry_service_error = _get_laundry_service_or_404(laundry_service_id)
+    if laundry_service_error:
+        payload, status_code = laundry_service_error
+        return jsonify(payload), status_code
 
     if item is None:
         item = LaundryServiceCommercialDraft(
@@ -224,6 +274,7 @@ def upsert_by_service(laundry_service_id):
             payload_json="{}",
         )
         _apply_payload_snapshot(item, payload)
+        _sync_laundry_service_from_payload(laundry_service, payload)
         db.session.add(item)
         db.session.commit()
         return jsonify(_serialize(item)), 201
@@ -234,6 +285,7 @@ def upsert_by_service(laundry_service_id):
     if "charged_by_user_id" in json_data:
         item.charged_by_user_id = json_data.get("charged_by_user_id")
     _apply_payload_snapshot(item, payload)
+    _sync_laundry_service_from_payload(laundry_service, payload)
     item.updated_by_user_id = current_user_id
     db.session.commit()
     return jsonify(_serialize(item)), 200

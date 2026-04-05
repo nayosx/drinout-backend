@@ -15,6 +15,12 @@ class Config:
 
     SQLALCHEMY_DATABASE_URI = f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:3306/{DB_NAME}"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "pool_pre_ping": os.getenv("DB_POOL_PRE_PING", "true").lower() in ("true", "1", "t", "yes"),
+        "pool_recycle": int(os.getenv("DB_POOL_RECYCLE", "1800")),
+        "pool_size": int(os.getenv("DB_POOL_SIZE", "10")),
+        "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", "20")),
+    }
 
     SECRET_KEY = os.getenv("SECRET_KEY", "mysuperawesome")
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "jwtawesometoken")
