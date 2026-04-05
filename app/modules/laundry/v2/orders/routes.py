@@ -147,12 +147,40 @@ def _calculate_line_subtotal(quantity, unit_price, discount_amount):
     return subtotal_before_discount, subtotal_after_discount
 
 
+def _has_billable_companion_service(items_data, current_index):
+    for index, row in enumerate(items_data):
+        if index == current_index:
+            continue
+
+        service = CatalogService.query.get(row["service_id"])
+        if not service or service.pricing_mode == "WEIGHT":
+            continue
+
+        final_unit_price = row.get("final_unit_price")
+        if final_unit_price is not None and money(final_unit_price) > Decimal("0.00"):
+            return True
+
+        suggested_price_option_id = row.get("suggested_price_option_id")
+        if suggested_price_option_id is None:
+            continue
+
+        suggested_option = ServicePriceOption.query.get(suggested_price_option_id)
+        if (
+            suggested_option
+            and suggested_option.service_id == service.id
+            and money(suggested_option.suggested_price) > Decimal("0.00")
+        ):
+            return True
+
+    return False
+
+
 def _build_order_items(order, items_data, pricing_profile, current_user_id):
     service_subtotal = Decimal("0.00")
     item_models = []
     snapshot_models = []
 
-    for row in items_data:
+    for index, row in enumerate(items_data):
         service = CatalogService.query.get(row["service_id"])
         if not service:
             return None, None, ({"error": f"Service {row['service_id']} not found"}, 404)
@@ -182,7 +210,11 @@ def _build_order_items(order, items_data, pricing_profile, current_user_id):
             if not pricing_profile:
                 return None, None, ({"error": "No weight pricing profile available"}, 400)
 
-            quote = WeightPricingEngine(pricing_profile).quote(weight_lb)
+            allow_small_weight_by_lb = _has_billable_companion_service(items_data, index)
+            quote = WeightPricingEngine(pricing_profile).quote(
+                weight_lb,
+                allow_small_weight_by_lb=allow_small_weight_by_lb,
+            )
             recommended_unit_price = money(quote["recommended_price"])
             if final_unit_price is None:
                 final_unit_price = recommended_unit_price

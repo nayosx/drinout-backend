@@ -42,7 +42,7 @@ class WeightPricingEngine:
                 raise ValueError("No active weight pricing profile found")
         return cls(profile)
 
-    def quote(self, weight_lb):
+    def quote(self, weight_lb, allow_small_weight_by_lb=False):
         weight = to_decimal(weight_lb, WEIGHT_STEP)
         if weight is None or weight <= 0:
             raise ValueError("weight_lb must be greater than 0")
@@ -50,7 +50,10 @@ class WeightPricingEngine:
             raise ValueError("The selected profile has no active tiers")
 
         if self.strategy == "PACKAGE_BLOCKS":
-            selected = self._make_package_blocks_option(weight)
+            selected = self._make_package_blocks_option(
+                weight,
+                allow_small_weight_by_lb=allow_small_weight_by_lb,
+            )
             serialized_options = [self._serialize_option(selected, selected["key"])]
             decision_reason = self._build_decision_reason(
                 weight,
@@ -209,11 +212,31 @@ class WeightPricingEngine:
             None,
         )
 
-    def _make_package_blocks_option(self, weight):
+    def _make_package_blocks_option(self, weight, allow_small_weight_by_lb=False):
         tier_15 = self._find_tier_by_weight("15.00")
         tier_25 = self._find_tier_by_weight("25.00")
         if not tier_15 or not tier_25:
             raise ValueError("PACKAGE_BLOCKS strategy requires active 15 lb and 25 lb tiers")
+
+        if weight <= Decimal("15.00"):
+            if allow_small_weight_by_lb and weight <= Decimal("11.00"):
+                extra_lb = self._round_extra_lb(weight)
+                extra_charge = to_decimal(extra_lb * self.extra_lb_price)
+                reason = (
+                    f"Estrategia PACKAGE_BLOCKS con excepcion por servicio adicional cobrable: "
+                    f"{extra_lb} lb cobradas por libra a {self.extra_lb_price}. Total {extra_charge}."
+                )
+                return {
+                    "key": f"PACKAGE_BLOCKS_SMALL_WEIGHT_BY_LB:{weight}:{extra_charge}",
+                    "option_type": "PACKAGE_BLOCKS_SMALL_WEIGHT_BY_LB",
+                    "tier": None,
+                    "tier_price": None,
+                    "extra_lb": extra_lb,
+                    "extra_charge": extra_charge,
+                    "total_price": extra_charge,
+                    "reason": reason,
+                }
+            return self._make_tier_option(tier_15, "PACKAGE_BLOCKS_MIN_15", weight)
 
         blocks_25 = int(weight // Decimal("25.00"))
         remainder_after_25 = weight - (Decimal(blocks_25) * Decimal("25.00"))
