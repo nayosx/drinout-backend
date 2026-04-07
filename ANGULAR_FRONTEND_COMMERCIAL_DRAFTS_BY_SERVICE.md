@@ -25,6 +25,7 @@ Tambien existen:
 - `GET /v2/laundry-service-commercial-drafts/by-service/:laundry_service_id`
 - `POST /v2/laundry-service-commercial-drafts`
 - `PATCH /v2/laundry-service-commercial-drafts/:id`
+- `POST /v2/laundry-service-commercial-drafts/by-service/:laundry_service_id/confirm`
 
 Pero para el flujo normal se recomienda `PUT by-service` porque crea o actualiza automaticamente el mismo draft del servicio.
 
@@ -150,3 +151,63 @@ Ahora:
 - el draft debe recuperarse y guardarse por `laundry_service_id`
 
 Ese es el identificador estable que comparten distintos usuarios a lo largo del dia.
+
+## Nuevo endpoint de confirmacion comercial
+
+Cuando el draft ya tiene:
+
+- `payment_type_id`
+- el item por peso resuelto por backend
+- servicios comerciales pendientes completos
+
+frontend puede confirmar el draft con:
+
+```http
+POST /v2/laundry-service-commercial-drafts/by-service/:laundry_service_id/confirm
+```
+
+Respuesta esperada:
+
+```json
+{
+  "draft": {
+    "id": 9,
+    "laundry_service_id": 67,
+    "is_confirmed": true,
+    "payload": {
+      "ui_model": {},
+      "laundry_service_payload": {},
+      "order_payload": {
+        "id": 12,
+        "payment_type_id": 1,
+        "status": "CONFIRMED"
+      },
+      "validations": {}
+    }
+  },
+  "order": {
+    "id": 12,
+    "payment_type_id": 1,
+    "status": "CONFIRMED"
+  }
+}
+```
+
+## Regla nueva para frontend
+
+Mientras el usuario esta editando:
+
+- leer desde `draft.payload.ui_model`
+
+Cuando el draft ya fue confirmado:
+
+- usar `response.order` como fuente principal para totales y confirmacion
+- usar `draft.payload.order_payload` como respaldo si ya estaba embebido en la respuesta del draft
+
+## Nota operativa
+
+El backend ahora sincroniza `laundry_service_payload.items` y `laundry_service_payload.extras`
+hacia las tablas operativas del servicio al guardar el draft.
+
+Por eso frontend debe seguir enviando el `payload` completo y actualizado, no parches parciales
+de solo algunos campos visuales.
