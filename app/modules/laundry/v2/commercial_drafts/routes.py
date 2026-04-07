@@ -23,11 +23,13 @@ from app.services.weight_pricing import WeightPricingEngine
 from db import db
 from models.catalog_service import CatalogService
 from models.extra_catalog import ExtraCatalog
+from models.global_setting import GlobalSetting
 from models.laundry_service_commercial_draft import LaundryServiceCommercialDraft
 from models.laundry_service import LaundryService
 from models.order import Order
 from models.service_extra_type import ServiceExtraType
 from models.service_price_option import ServicePriceOption
+from models.transaction import Transaction
 from models.weight_pricing_profile import WeightPricingProfile
 from schemas.laundry_service_commercial_draft_schema import (
     LaundryServiceCommercialDraftCreateSchema,
@@ -90,6 +92,22 @@ def _resolve_pricing_profile(profile_id):
     )
 
 
+def _resolve_express_service_surcharge():
+    item = GlobalSetting.query.filter_by(
+        key="express_service_surcharge",
+        is_active=True,
+    ).first()
+    if not item:
+        return Decimal("0.00")
+    return _to_decimal(item.value) or Decimal("0.00")
+
+
+def _service_label_surcharge(service_label):
+    if service_label == "EXPRESS":
+        return _resolve_express_service_surcharge()
+    return Decimal("0.00")
+
+
 def _commercial_entry_has_positive_price(entry):
     if not isinstance(entry, dict):
         return False
@@ -123,7 +141,11 @@ def _draft_has_billable_companion_service(root):
 def _refresh_weight_pricing_preview(payload):
     root = _payload_root(payload)
     weight_lb = root.get("weight_lb")
+    express_surcharge = _service_label_surcharge(root.get("service_label"))
+    root["express_service_surcharge"] = str(express_surcharge)
     if weight_lb in (None, ""):
+        if root.get("quoted_service_amount") is None and express_surcharge > Decimal("0.00"):
+            root["quoted_service_amount"] = str(express_surcharge)
         return payload
 
     profile = _resolve_pricing_profile(root.get("pricing_profile_id"))
@@ -156,7 +178,7 @@ def _refresh_weight_pricing_preview(payload):
         }
     )
     root["weight_pricing_preview"] = preview
-    root["quoted_service_amount"] = quote["recommended_price"]
+    root["quoted_service_amount"] = str(money(Decimal(str(quote["recommended_price"])) + express_surcharge))
     return payload
 
 
@@ -387,14 +409,92 @@ def _draft_order_payload(payload, root, item):
     base.setdefault("global_discount_reason", root.get("global_discount_reason"))
     base.setdefault("notes", root.get("notes"))
     base.setdefault("charged_by_user_id", item.charged_by_user_id)
+    base.setdefault("service_label", root.get("service_label"))
+    base.setdefault(
+        "express_service_surcharge",
+        _normalize_row_decimal(root.get("express_service_surcharge"))
+        or _normalize_row_decimal(_service_label_surcharge(root.get("service_label")))
+        or "0.00",
+    )
     base["items"] = _build_order_item_rows_from_draft(root)
     base["extras"] = _build_order_extra_rows_from_draft(root)
     return base
 
 
-def _build_order_from_draft(item, payload):
+def _build_transaction_detail(order, laundry_service, express_service_surcharge):
+    lines = []
+    client_name = None
+    if laundry_service and laundry_service.client:
+        client_name = laundry_service.client.name
+    if not client_name:
+        client_name = f"Cliente {order.client_id}"
+
+    lines.append(f"{client_name}:")
+
+    weight_item = None
+    other_items = []
+    for order_item in order.items:
+        if order_item.pricing_mode == "WEIGHT" and weight_item is None:
+            weight_item = order_item
+        else:
+            other_items.append(order_item)
+
+    if weight_item:
+        lines.append(
+            f"Ropa por peso: ${money(weight_item.subtotal_after_discount)} ({money(weight_item.weight_lb)} lb)"
+        )
+
+    if order.delivery_fee_final and money(order.delivery_fee_final) > Decimal("0.00"):
+        lines.append(f"Envio: ${money(order.delivery_fee_final)}")
+
+    if express_service_surcharge > Decimal("0.00"):
+        lines.append(f"Servicio express: ${money(express_service_surcharge)}")
+
+    if order.extra_items:
+        lines.append("Producto adicional")
+        for extra_item in order.extra_items:
+            lines.append(
+                f"{extra_item.extra_name_snapshot}: ${money(extra_item.subtotal_after_discount)}"
+            )
+
+    for order_item in other_items:
+        quantity = money(order_item.quantity)
+        if quantity == Decimal("1.00"):
+            lines.append(
+                f"{order_item.service_name_snapshot}: ${money(order_item.subtotal_after_discount)}"
+            )
+        else:
+            lines.append(
+                f"{order_item.service_name_snapshot}: ${money(order_item.subtotal_after_discount)} ({quantity} {order_item.unit_label_snapshot})"
+            )
+
+    lines.append(f"Total: ${money(order.total_amount)}")
+    return "\n".join(lines)
+
+
+def _create_transaction_from_order(order, laundry_service, express_service_surcharge):
+    transaction = Transaction(
+        user_id=order.charged_by_user_id or order.created_by_user_id,
+        transaction_type="IN",
+        payment_type_id=order.payment_type_id,
+        category_id=None,
+        detail=_build_transaction_detail(order, laundry_service, express_service_surcharge),
+        amount=money(order.total_amount),
+        client_id=order.client_id,
+    )
+    db.session.add(transaction)
+    db.session.flush()
+    return transaction
+
+
+def _build_order_from_draft(item, payload, laundry_service):
     root = _payload_root(payload)
     order_data = _draft_order_payload(payload, root, item)
+    express_service_surcharge = money(
+        order_data.get("express_service_surcharge")
+        or _service_label_surcharge(order_data.get("service_label"))
+        or 0
+    )
 
     if not order_data.get("client_id"):
         return None, ({"error": "client_id is required to confirm the commercial draft"}, 400)
@@ -512,6 +612,7 @@ def _build_order_from_draft(item, payload):
         order.service_subtotal
         + order.extras_subtotal
         + order.delivery_fee_final
+        + express_service_surcharge
         - money(order.global_discount_amount)
     )
     if order.subtotal_before_payment_surcharge < 0:
@@ -523,6 +624,9 @@ def _build_order_from_draft(item, payload):
     )
     order.total_amount = money(order.subtotal_before_payment_surcharge + order.payment_surcharge_amount)
     _create_status_history(order, None, order.status, current_user_id, "Commercial draft confirmation")
+    transaction = _create_transaction_from_order(order, laundry_service, express_service_surcharge)
+    laundry_service.transaction_id = transaction.id
+    item.transaction_id = transaction.id
     return order, None
 
 
@@ -743,7 +847,7 @@ def confirm_by_service(laundry_service_id):
     existing_order_payload = payload.get("order_payload")
     if item.is_confirmed and isinstance(existing_order_payload, dict) and existing_order_payload.get("id"):
         existing_order = _order_query().filter(Order.id == existing_order_payload["id"]).first()
-        if existing_order:
+        if existing_order and item.transaction_id:
             return jsonify({"draft": _serialize(item), "order": order_schema.dump(existing_order)}), 200
 
     laundry_service, laundry_service_error = _get_laundry_service_or_404(laundry_service_id)
@@ -757,7 +861,7 @@ def confirm_by_service(laundry_service_id):
         return jsonify(payload_error), status_code
 
     try:
-        order, order_error = _build_order_from_draft(item, payload)
+        order, order_error = _build_order_from_draft(item, payload, laundry_service)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     if order_error:
@@ -766,7 +870,17 @@ def confirm_by_service(laundry_service_id):
 
     db.session.flush()
     persisted_order = _order_query().filter(Order.id == order.id).first_or_404()
-    payload["order_payload"] = order_schema.dump(persisted_order)
+    root = _payload_root(payload)
+    service_root = _payload_service_root(payload)
+    root["transaction_id"] = item.transaction_id
+    root["express_service_surcharge"] = str(_service_label_surcharge(root.get("service_label")))
+    if isinstance(service_root, dict):
+        service_root["transaction_id"] = item.transaction_id
+    payload["order_payload"] = {
+        **order_schema.dump(persisted_order),
+        "transaction_id": item.transaction_id,
+        "express_service_surcharge": str(_service_label_surcharge(root.get("service_label"))),
+    }
     item.is_confirmed = True
     item.confirmed_at = datetime.utcnow()
     item.charged_by_user_id = item.charged_by_user_id or get_jwt_identity()
