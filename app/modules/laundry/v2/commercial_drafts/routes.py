@@ -108,6 +108,13 @@ def _service_label_surcharge(service_label):
     return Decimal("0.00")
 
 
+def _normalized_weight_lb(value):
+    weight_lb = _to_decimal(value)
+    if weight_lb is None or weight_lb <= Decimal("0.00"):
+        return None
+    return weight_lb
+
+
 def _commercial_entry_has_positive_price(entry):
     if not isinstance(entry, dict):
         return False
@@ -140,12 +147,14 @@ def _draft_has_billable_companion_service(root):
 
 def _refresh_weight_pricing_preview(payload):
     root = _payload_root(payload)
-    weight_lb = root.get("weight_lb")
+    weight_lb = _normalized_weight_lb(root.get("weight_lb"))
     express_surcharge = _service_label_surcharge(root.get("service_label"))
     root["express_service_surcharge"] = str(express_surcharge)
-    if weight_lb in (None, ""):
-        if root.get("quoted_service_amount") is None and express_surcharge > Decimal("0.00"):
-            root["quoted_service_amount"] = str(express_surcharge)
+    root["weight_lb"] = float(weight_lb) if weight_lb is not None else None
+    if weight_lb is None:
+        root["weight_pricing_preview"] = None
+        if root.get("quoted_service_amount") in ("",):
+            root["quoted_service_amount"] = None
         return payload
 
     profile = _resolve_pricing_profile(root.get("pricing_profile_id"))
@@ -202,7 +211,7 @@ def _apply_payload_snapshot(item, payload):
     item.status = root.get("status")
     item.service_label = root.get("service_label")
     item.scheduled_pickup_at = _to_datetime(root.get("scheduled_pickup_at"))
-    item.weight_lb = _to_decimal(root.get("weight_lb"))
+    item.weight_lb = _normalized_weight_lb(root.get("weight_lb"))
     item.distance_km = _to_decimal(root.get("distance_km"))
     item.delivery_price_per_km = _to_decimal(root.get("delivery_price_per_km"))
     item.delivery_fee_suggested = _to_decimal(root.get("delivery_fee_suggested"))
@@ -232,7 +241,7 @@ def _sync_laundry_service_from_payload(laundry_service, payload):
     if "transaction_id" in root:
         laundry_service.transaction_id = root.get("transaction_id")
     if "weight_lb" in root:
-        laundry_service.weight_lb = _to_decimal(root.get("weight_lb"))
+        laundry_service.weight_lb = _normalized_weight_lb(root.get("weight_lb"))
     if "notes" in root:
         laundry_service.notes = root.get("notes")
 
