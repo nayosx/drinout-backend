@@ -38,11 +38,7 @@ def create_garment_type():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-    garment_type = GarmentType(
-        name=data["name"],
-        icon=data.get("icon"),
-        is_frequent=data.get("is_frequent", False),
-    )
+    garment_type = GarmentType(name=data["name"], category=data.get("category"))
     db.session.add(garment_type)
     db.session.commit()
 
@@ -67,10 +63,8 @@ def update_garment_type(garment_type_id):
 
     if "name" in data:
         garment_type.name = data["name"]
-    if "icon" in data:
-        garment_type.icon = data["icon"]
-    if "is_frequent" in data:
-        garment_type.is_frequent = data["is_frequent"]
+    if "category" in data:
+        garment_type.category = data["category"]
 
     db.session.commit()
 

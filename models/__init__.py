@@ -20,5 +20,8 @@ from .laundry_delivery import LaundryDelivery
 from .laundry_activity_log import LaundryActivityLog
 from .laundry_service_log import LaundryServiceLog
 from .garment_type import GarmentType
-from .service_extra_type import ServiceExtraType
 from .global_setting import GlobalSetting
+from .extra import Extra
+from .service_category_legacy import ServiceCategoryLegacy
+from .catalog_service_legacy import CatalogServiceLegacy
+from .service_variant_legacy import ServiceVariantLegacy

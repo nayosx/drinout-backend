@@ -14,13 +14,16 @@ from app.modules.clients.address_routes import addresses_bp
 from app.modules.clients.phone_routes import phones_bp
 from app.modules.laundry.services.routes import laundry_service_bp
 from app.modules.laundry.deliveries.routes import laundry_delivery_bp
-from app.modules.laundry.processing_steps.routes import processing_step_bp
-from app.modules.laundry.logs.routes import laundry_service_log_bp
 from app.modules.laundry.garment_types.routes import garment_type_bp
 from app.modules.laundry.v2.garment_types.routes import garment_type_v2_bp
-from app.modules.laundry.v2.service_extra_types.routes import service_extra_type_bp
 from app.modules.laundry.v2.services.routes import laundry_service_v2_bp
 from app.modules.laundry.v2.global_settings.routes import global_setting_v2_bp
+from app.modules.catalogs.legacy.routes import (
+    extras_bp,
+    service_categories_bp,
+    catalog_services_bp,
+    service_variants_bp,
+)
 
 from app.modules.laundry.queue.socket import register_laundry_queue_socket
 
@@ -42,13 +45,14 @@ def register_blueprints(app):
     app.register_blueprint(phones_bp)
     app.register_blueprint(laundry_service_bp)
     app.register_blueprint(laundry_delivery_bp)
-    app.register_blueprint(processing_step_bp)
-    app.register_blueprint(laundry_service_log_bp)
     app.register_blueprint(garment_type_bp)
     app.register_blueprint(garment_type_v2_bp)
-    app.register_blueprint(service_extra_type_bp)
     app.register_blueprint(laundry_service_v2_bp)
     app.register_blueprint(global_setting_v2_bp)
+    app.register_blueprint(extras_bp)
+    app.register_blueprint(service_categories_bp)
+    app.register_blueprint(catalog_services_bp)
+    app.register_blueprint(service_variants_bp)
 
 
 def register_sockets(socketio):

@@ -15,11 +15,7 @@ schema_many = GarmentTypeV2Schema(many=True)
 @garment_type_v2_bp.route("", methods=["GET"])
 @jwt_required()
 def get_all():
-    garment_types = GarmentType.query.order_by(
-        GarmentType.display_order.is_(None),
-        GarmentType.display_order.asc(),
-        GarmentType.name.asc(),
-    ).all()
+    garment_types = GarmentType.query.order_by(GarmentType.name.asc()).all()
     return jsonify(schema_many.dump(garment_types)), 200
 
 
