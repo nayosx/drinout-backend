@@ -13,11 +13,13 @@ from app.modules.clients.routes import clients_bp
 from app.modules.clients.address_routes import addresses_bp
 from app.modules.clients.phone_routes import phones_bp
 from app.modules.laundry.services.routes import laundry_service_bp
+from app.modules.laundry.service_extras.routes import laundry_service_extra_bp
 from app.modules.laundry.deliveries.routes import laundry_delivery_bp
 from app.modules.laundry.garment_types.routes import garment_type_bp
 from app.modules.laundry.v2.garment_types.routes import garment_type_v2_bp
 from app.modules.laundry.v2.services.routes import laundry_service_v2_bp
 from app.modules.laundry.v2.global_settings.routes import global_setting_v2_bp
+from app.modules.orders.items.routes import order_item_bp
 from app.modules.catalogs.legacy.routes import (
     extras_bp,
     service_categories_bp,
@@ -44,11 +46,13 @@ def register_blueprints(app):
     app.register_blueprint(addresses_bp)
     app.register_blueprint(phones_bp)
     app.register_blueprint(laundry_service_bp)
+    app.register_blueprint(laundry_service_extra_bp)
     app.register_blueprint(laundry_delivery_bp)
     app.register_blueprint(garment_type_bp)
     app.register_blueprint(garment_type_v2_bp)
     app.register_blueprint(laundry_service_v2_bp)
     app.register_blueprint(global_setting_v2_bp)
+    app.register_blueprint(order_item_bp)
     app.register_blueprint(extras_bp)
     app.register_blueprint(service_categories_bp)
     app.register_blueprint(catalog_services_bp)

@@ -3,9 +3,12 @@ from schemas.base import LocalDateTimeMixin
 
 from schemas.client_schema import ClientDetailSchema, ClientShortSchema, ClientWithPhonesSchema
 from schemas.client_schema import ClientAddressNoUpdateSchema
-from schemas.laundry_service_log_schema import LaundryServiceLogSchema
 from schemas.transaction_schema import TransactionSchema
 from schemas.user_schema import UserSchema
+
+
+FULFILLMENT_TYPES = ["WALK_IN", "DELIVERY", "PICKUP_DELIVERY"]
+
 
 class LaundryServiceSchema(LocalDateTimeMixin, Schema):
     id = fields.Int(dump_only=True)
@@ -30,6 +33,10 @@ class LaundryServiceSchema(LocalDateTimeMixin, Schema):
         required=True,
         validate=validate.OneOf(["NORMAL", "EXPRESS"])
     )
+    fulfillment_type = fields.Str(
+        load_default="WALK_IN",
+        validate=validate.OneOf(FULFILLMENT_TYPES)
+    )
 
     transaction_id = fields.Int(allow_none=True)
     pending_order = fields.Int(dump_only=True, allow_none=True)
@@ -45,7 +52,7 @@ class LaundryServiceGetSchema(LaundryServiceSchema):
     created_by_user = fields.Nested(UserSchema, dump_only=True, allow_none=True)
 
 class LaundryServiceAllSchema(LaundryServiceGetSchema):
-    logs = fields.List(fields.Nested(LaundryServiceLogSchema), dump_only=True)
+    pass
 
 class LaundryServiceLiteSchema(LaundryServiceSchema):
     id = fields.Int()

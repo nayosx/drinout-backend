@@ -2,13 +2,18 @@ from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import func
 from db import db
+from models.catalog_service_legacy import CatalogServiceLegacy
 from models.laundry_service import LaundryService
 from models.laundry_activity_log import LaundryActivityLog
 from models.client import Client, ClientAddress
+from models.order_item import OrderItem
 from schemas.laundry_service_schema import LaundryServiceAllSchema, LaundryServiceDetailSchema, LaundryServiceLiteSchema, LaundryServiceSchema, LaundryServiceGetSchema, LaundryServiceCompactSchema
 from sqlalchemy.orm import selectinload
 from app.modules.laundry.queue.service import fetch_queue_items, reorder_pending_ids
 from app.modules.laundry.queue.events import emit_queue_updated
+from models.global_setting import GlobalSetting
+from models.service_category_legacy import ServiceCategoryLegacy
+from decimal import Decimal
 
 laundry_service_bp = Blueprint("laundry_service_bp", __name__, url_prefix="/laundry_services")
 
@@ -76,6 +81,120 @@ def _emit_queue_for_status_and_all(socketio, statuses):
         )
 
 
+def _build_default_delivery_order_item(laundry_service_id: int):
+    delivery_service = (
+        CatalogServiceLegacy.query
+        .filter_by(
+            pricing_mode=CatalogServiceLegacy.PRICING_MODE_DELIVERY,
+            is_active=True,
+        )
+        .order_by(CatalogServiceLegacy.id.asc())
+        .first()
+    )
+    if not delivery_service:
+        raise ValueError("Delivery service catalog is not configured")
+
+    return OrderItem(
+        laundry_service_id=laundry_service_id,
+        service_id=delivery_service.id,
+        service_variant_id=None,
+        garment_type_id=None,
+        quantity=1,
+        catalog_price=0,
+        applied_price=0,
+        is_friendly_discount=False,
+        calculation_snapshot=None,
+    )
+
+
+def _load_express_service_surcharge():
+    setting = GlobalSetting.query.filter_by(
+        key="express_service_surcharge",
+        is_active=True,
+    ).first()
+    if not setting:
+        raise ValueError("express_service_surcharge setting is not configured")
+    return Decimal(str(setting.value)).quantize(Decimal("0.01"))
+
+
+def _resolve_service_type_catalog():
+    service = (
+        CatalogServiceLegacy.query
+        .join(ServiceCategoryLegacy, CatalogServiceLegacy.category_id == ServiceCategoryLegacy.id)
+        .filter(func.lower(ServiceCategoryLegacy.name).in_(["surcharge", "recargo"]))
+        .filter(CatalogServiceLegacy.is_active.is_(True))
+        .order_by(CatalogServiceLegacy.id.asc())
+        .first()
+    )
+    if not service:
+        raise ValueError("Service type surcharge catalog is not configured")
+    return service
+
+
+def _service_type_snapshot(service_label: str):
+    normalized_service_label = (service_label or "NORMAL").strip().upper()
+    return (
+        f'{{"service_label":"{normalized_service_label}","source":"service_label"}}'
+    )
+
+
+def _service_type_amount(service_label: str):
+    normalized_service_label = (service_label or "NORMAL").strip().upper()
+    if normalized_service_label == "EXPRESS":
+        return _load_express_service_surcharge()
+    return Decimal("0.00")
+
+
+def _build_default_service_type_order_item(laundry_service_id: int, service_label: str):
+    service_type_catalog = _resolve_service_type_catalog()
+    surcharge_amount = _service_type_amount(service_label)
+
+    return OrderItem(
+        laundry_service_id=laundry_service_id,
+        service_id=service_type_catalog.id,
+        service_variant_id=None,
+        garment_type_id=None,
+        quantity=1,
+        catalog_price=surcharge_amount,
+        applied_price=surcharge_amount,
+        is_friendly_discount=False,
+        calculation_snapshot=_service_type_snapshot(service_label),
+    )
+
+
+def _sync_service_type_order_item(laundry_service_id: int, service_label: str):
+    service_type_catalog = _resolve_service_type_catalog()
+    surcharge_amount = _service_type_amount(service_label)
+
+    item = (
+        OrderItem.query
+        .filter_by(
+            laundry_service_id=laundry_service_id,
+            service_id=service_type_catalog.id,
+        )
+        .order_by(OrderItem.id.asc())
+        .first()
+    )
+    if item is None:
+        item = OrderItem(
+            laundry_service_id=laundry_service_id,
+            service_id=service_type_catalog.id,
+            service_variant_id=None,
+            garment_type_id=None,
+            quantity=1,
+            is_friendly_discount=False,
+        )
+        db.session.add(item)
+
+    item.service_variant_id = None
+    item.garment_type_id = None
+    item.quantity = 1
+    item.catalog_price = surcharge_amount
+    item.applied_price = surcharge_amount
+    item.is_friendly_discount = False
+    item.calculation_snapshot = _service_type_snapshot(service_label)
+
+
 @laundry_service_bp.route("", methods=["GET"])
 @jwt_required()
 def get_all():
@@ -141,6 +260,7 @@ def create():
         client_address_id=data["client_address_id"],
         scheduled_pickup_at=data["scheduled_pickup_at"],
         service_label=data["service_label"],
+        fulfillment_type=data.get("fulfillment_type", "WALK_IN"),
         status=data["status"],
         transaction_id=data.get("transaction_id"),
         created_by_user_id=current_user_id
@@ -150,6 +270,19 @@ def create():
     else:
         _sync_pending_order_for_status(item)
     db.session.add(item)
+    db.session.flush()
+
+    try:
+        delivery_order_item = _build_default_delivery_order_item(item.id)
+        service_type_order_item = _build_default_service_type_order_item(
+            item.id,
+            item.service_label,
+        )
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({"error": str(exc)}), 400
+    db.session.add(delivery_order_item)
+    db.session.add(service_type_order_item)
     db.session.commit()
 
     log = LaundryActivityLog(
@@ -207,6 +340,8 @@ def update(item_id):
         if item.service_label != data["service_label"]:
             queue_relevant_changed = True
         item.service_label = data["service_label"]
+    if "fulfillment_type" in data:
+        item.fulfillment_type = data["fulfillment_type"]
     if "status" in data:
         if item.status != data["status"]:
             item.status = data["status"]
@@ -220,6 +355,12 @@ def update(item_id):
         if item.transaction_id != data["transaction_id"]:
             queue_relevant_changed = True
         item.transaction_id = data["transaction_id"]
+
+    try:
+        _sync_service_type_order_item(item.id, item.service_label)
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({"error": str(exc)}), 400
 
     db.session.commit()
 

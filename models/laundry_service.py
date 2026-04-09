@@ -5,6 +5,10 @@ from sqlalchemy.orm import relationship
 class LaundryService(db.Model):
     __tablename__ = "laundry_services"
 
+    FULFILLMENT_TYPE_WALK_IN = "WALK_IN"
+    FULFILLMENT_TYPE_DELIVERY = "DELIVERY"
+    FULFILLMENT_TYPE_PICKUP_DELIVERY = "PICKUP_DELIVERY"
+
     id = Column(Integer, primary_key=True)
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
     client_address_id = Column(Integer, ForeignKey("client_addresses.id"), nullable=False)
@@ -24,8 +28,12 @@ class LaundryService(db.Model):
         default="PENDING"
     )
     service_label = Column(Enum("NORMAL", "EXPRESS"), nullable=False, default="NORMAL")
+    fulfillment_type = Column(
+        db.String(20),
+        nullable=True,
+        default=FULFILLMENT_TYPE_WALK_IN,
+    )
     transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)
-    weight_lb = Column(Numeric(10, 2), nullable=True)
     notes = Column(Text, nullable=True)
     created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=func.now())
@@ -35,13 +43,6 @@ class LaundryService(db.Model):
     client_address = relationship("ClientAddress")
     transaction = relationship("Transaction")
     created_by_user = relationship("User")
-
-    logs = relationship(
-        "LaundryServiceLog",
-        back_populates="laundry_service",
-        order_by="LaundryServiceLog.created_at",
-        cascade="all, delete-orphan"
-    )
 
     def __repr__(self):
         return f"<LaundryService id={self.id} status={self.status}>"

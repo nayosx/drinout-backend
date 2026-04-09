@@ -169,8 +169,11 @@ def delete_service_category(item_id):
 def get_catalog_services():
     query = _apply_is_active_filter(CatalogServiceLegacy.query, CatalogServiceLegacy)
     category_id = request.args.get("category_id", type=int)
+    pricing_mode = request.args.get("pricing_mode")
     if category_id is not None:
         query = query.filter(CatalogServiceLegacy.category_id == category_id)
+    if pricing_mode:
+        query = query.filter(CatalogServiceLegacy.pricing_mode == pricing_mode.strip().upper())
     items = query.order_by(CatalogServiceLegacy.name.asc()).all()
     return jsonify(catalog_services_schema.dump(items)), 200
 

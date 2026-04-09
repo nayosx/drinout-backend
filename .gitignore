@@ -179,4 +179,4 @@ source
 sql/*.sql
 
 # Markdown notes/docs
-*.md
+notes/
