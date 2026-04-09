@@ -42,20 +42,6 @@ class LaundryService(db.Model):
         order_by="LaundryServiceLog.created_at",
         cascade="all, delete-orphan"
     )
-    items = relationship(
-        "LaundryServiceItem",
-        back_populates="laundry_service",
-        lazy="selectin",
-        cascade="all, delete-orphan",
-        order_by="LaundryServiceItem.id",
-    )
-    extras = relationship(
-        "LaundryServiceExtra",
-        back_populates="laundry_service",
-        lazy="selectin",
-        cascade="all, delete-orphan",
-        order_by="LaundryServiceExtra.id",
-    )
 
     def __repr__(self):
         return f"<LaundryService id={self.id} status={self.status}>"

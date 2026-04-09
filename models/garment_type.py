@@ -16,11 +16,5 @@ class GarmentType(db.Model):
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     updated_at = db.Column(db.DateTime, server_default=db.func.now(), onupdate=db.func.now())
 
-    service_items = db.relationship(
-        "LaundryServiceItem",
-        back_populates="garment_type",
-        lazy="selectin",
-    )
-
     def __repr__(self):
         return f"<GarmentType id={self.id} name={self.name}>"

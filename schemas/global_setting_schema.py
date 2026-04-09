@@ -1,6 +1,7 @@
 from marshmallow import Schema, fields, validate
 
 from schemas.base import LocalDateTimeMixin
+from models.global_setting import GLOBAL_SETTING_CATEGORIES
 
 
 GLOBAL_SETTING_VALUE_TYPES = ["STRING", "DECIMAL", "INT", "BOOL", "JSON"]
@@ -11,6 +12,11 @@ class GlobalSettingSchema(LocalDateTimeMixin, Schema):
     key = fields.Str(required=True, validate=validate.Length(min=1, max=100))
     name = fields.Str(required=True, validate=validate.Length(min=1, max=120))
     description = fields.Str(allow_none=True, validate=validate.Length(max=255))
+    category = fields.Str(
+        load_default=None,
+        allow_none=True,
+        validate=validate.OneOf(GLOBAL_SETTING_CATEGORIES),
+    )
     value_type = fields.Str(
         load_default="STRING",
         validate=validate.OneOf(GLOBAL_SETTING_VALUE_TYPES),

@@ -9,6 +9,7 @@ module_spec = spec_from_file_location("weight_pricing_under_test", module_path)
 weight_pricing_module = module_from_spec(module_spec)
 module_spec.loader.exec_module(weight_pricing_module)
 WeightPricingEngine = weight_pricing_module.WeightPricingEngine
+calculate_weight_service_quote = weight_pricing_module.calculate_weight_service_quote
 
 
 class FakeTier:
@@ -140,6 +141,40 @@ class WeightPricingEngineTests(unittest.TestCase):
 
         self.assertEqual(result["selected_price"], "59.96")
         self.assertEqual(result["difference_selected_vs_lowest"], "0.00")
+
+    def test_friendly_quote_prefers_extra_pounds_rate_for_small_weight_with_other_services(self):
+        result = calculate_weight_service_quote(
+            weight_lb="10.00",
+            has_other_services=True,
+            pricing_config={},
+        )
+
+        self.assertEqual(result["summary"]["final_price"], "9.00")
+        self.assertEqual(result["summary"]["strict_price"], "9.00")
+        self.assertTrue(result["applied_rules"]["preferential_rate_applied"])
+        self.assertEqual(result["breakdown"]["charged_as"], "Tarifa Preferencial (Libras Extra)")
+
+    def test_friendly_quote_applies_minimum_fee_without_other_services(self):
+        result = calculate_weight_service_quote(
+            weight_lb="5.00",
+            has_other_services=False,
+            pricing_config={},
+        )
+
+        self.assertEqual(result["summary"]["final_price"], "9.99")
+        self.assertTrue(result["applied_rules"]["minimum_fee_applied"])
+
+    def test_friendly_quote_upgrades_remainder_to_15_lb_when_it_is_better_for_customer(self):
+        result = calculate_weight_service_quote(
+            weight_lb="14.00",
+            has_other_services=True,
+            pricing_config={},
+        )
+
+        self.assertEqual(result["summary"]["strict_price"], "12.60")
+        self.assertEqual(result["summary"]["final_price"], "9.99")
+        self.assertEqual(result["summary"]["total_saved"], "2.61")
+        self.assertTrue(result["applied_rules"]["upgraded_to_15lb"])
 
 
 if __name__ == "__main__":

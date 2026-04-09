@@ -177,3 +177,6 @@ source
 # SQL artifacts
 *.sql
 sql/*.sql
+
+# Markdown notes/docs
+*.md

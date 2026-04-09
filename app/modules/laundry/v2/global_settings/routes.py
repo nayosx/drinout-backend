@@ -4,6 +4,7 @@ from flask_jwt_extended import jwt_required
 from db import db
 from models.global_setting import GlobalSetting
 from schemas.global_setting_schema import GlobalSettingSchema
+from app.modules.laundry.v2.global_settings.categorying import normalize_global_setting_category
 
 
 global_setting_v2_bp = Blueprint(
@@ -21,8 +22,11 @@ schema_many = GlobalSettingSchema(many=True)
 def get_all():
     query = GlobalSetting.query
     is_active = request.args.get("is_active")
+    category = request.args.get("category")
     if is_active is not None:
         query = query.filter(GlobalSetting.is_active == (is_active.lower() == "true"))
+    if category:
+        query = query.filter(GlobalSetting.category == category.strip().lower())
     items = query.order_by(GlobalSetting.key.asc()).all()
     return jsonify(schema_many.dump(items)), 200
 
@@ -45,6 +49,14 @@ def create():
     except Exception as exc:
         return jsonify({"error": str(exc)}), 400
 
+    try:
+        data["category"] = normalize_global_setting_category(
+            data.get("category"),
+            data.get("key"),
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
     item = GlobalSetting(**data)
     db.session.add(item)
     db.session.commit()
@@ -61,6 +73,14 @@ def update(item_key):
     try:
         data = schema.load(json_data, partial=True)
     except Exception as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    try:
+        data["category"] = normalize_global_setting_category(
+            data.get("category"),
+            data.get("key", item.key),
+        )
+    except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
     for key, value in data.items():

@@ -14,11 +14,5 @@ class ServiceExtraType(db.Model):
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     updated_at = db.Column(db.DateTime, server_default=db.func.now(), onupdate=db.func.now())
 
-    service_extras = db.relationship(
-        "LaundryServiceExtra",
-        back_populates="service_extra_type",
-        lazy="selectin",
-    )
-
     def __repr__(self):
         return f"<ServiceExtraType id={self.id} code={self.code}>"

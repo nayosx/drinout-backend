@@ -1,416 +1,280 @@
-import json
-import math
-from decimal import Decimal, ROUND_HALF_UP
+from __future__ import annotations
+
+from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
+from typing import Any, Dict, Iterable, Optional
 
 
-MONEY_STEP = Decimal("0.01")
-WEIGHT_STEP = Decimal("0.01")
+MONEY_PLACES = Decimal("0.01")
 
 
-def to_decimal(value, places=MONEY_STEP):
+def _as_decimal(value: Any, default: Optional[str] = None) -> Decimal:
     if value is None:
-        return None
+        if default is None:
+            raise ValueError("A decimal value is required")
+        return Decimal(str(default))
     if isinstance(value, Decimal):
-        decimal_value = value
-    else:
-        decimal_value = Decimal(str(value))
-    return decimal_value.quantize(places, rounding=ROUND_HALF_UP)
+        return value
+    return Decimal(str(value))
+
+
+def _money(value: Any) -> Decimal:
+    return _as_decimal(value).quantize(MONEY_PLACES, rounding=ROUND_HALF_UP)
+
+
+def _decimal_to_str(value: Any) -> str:
+    return format(_money(value), ".2f")
+
+
+def _find_active_tiers(tiers: Iterable[Any]) -> list[Any]:
+    active = [tier for tier in tiers if getattr(tier, "is_active", True)]
+    return sorted(active, key=lambda tier: (getattr(tier, "sort_order", 0), getattr(tier, "id", 0)))
 
 
 class WeightPricingEngine:
-    def __init__(self, profile):
+    def __init__(self, profile: Any):
         self.profile = profile
-        self.extra_lb_price = to_decimal(profile.extra_lb_price)
-        self.round_mode = profile.round_mode or "exact"
-        self.strategy = profile.strategy or "MAX_REVENUE"
-        self.tiers = [tier for tier in profile.tiers if tier.is_active]
-        self.tiers.sort(key=lambda item: (to_decimal(item.max_weight_lb, WEIGHT_STEP), item.sort_order, item.id))
-
-    @classmethod
-    def from_profile_id(cls, profile_id=None):
-        from models.weight_pricing_profile import WeightPricingProfile
-
-        if profile_id:
-            profile = WeightPricingProfile.query.get_or_404(profile_id)
-        else:
-            profile = (
-                WeightPricingProfile.query.filter_by(is_active=True)
-                .order_by(WeightPricingProfile.id.asc())
-                .first()
-            )
-            if not profile:
-                raise ValueError("No active weight pricing profile found")
-        return cls(profile)
-
-    def quote(self, weight_lb, allow_small_weight_by_lb=False):
-        weight = to_decimal(weight_lb, WEIGHT_STEP)
-        if weight is None or weight <= 0:
-            raise ValueError("weight_lb must be greater than 0")
+        self.tiers = _find_active_tiers(getattr(profile, "tiers", []))
         if not self.tiers:
-            raise ValueError("The selected profile has no active tiers")
+            raise ValueError("Weight pricing profile requires at least one active tier")
 
-        if self.strategy == "PACKAGE_BLOCKS":
-            selected = self._make_package_blocks_option(
-                weight,
-                allow_small_weight_by_lb=allow_small_weight_by_lb,
-            )
-            serialized_options = [self._serialize_option(selected, selected["key"])]
-            decision_reason = self._build_decision_reason(
-                weight,
-                selected,
-                serialized_options,
-                selected["total_price"],
-                selected["total_price"],
-            )
-            return {
-                "profile_id": self.profile.id,
-                "profile_name": self.profile.name,
-                "weight_lb": str(weight),
-                "strategy_selected": self.strategy,
-                "selected_price": str(selected["total_price"]),
-                "recommended_price": str(selected["total_price"]),
-                "selected_tier_id": selected["tier"].id if selected["tier"] else None,
-                "selected_tier_max_weight_lb": (
-                    str(to_decimal(selected["tier"].max_weight_lb, WEIGHT_STEP))
-                    if selected["tier"]
-                    else None
-                ),
-                "selected_option_type": selected["option_type"],
-                "selected_base_price": str(selected["tier_price"]) if selected["tier_price"] is not None else None,
-                "allow_manual_override": self.profile.allow_manual_override,
-                "decision_reason": decision_reason,
-                "options_evaluated": serialized_options,
-                "lowest_valid_price": str(selected["total_price"]),
-                "highest_valid_price": str(selected["total_price"]),
-                "difference_selected_vs_lowest": str(to_decimal(0)),
-                "difference_selected_vs_highest": str(to_decimal(0)),
-                "compare_all_tiers": self.profile.compare_all_tiers,
-                "round_mode": self.round_mode,
-                "evaluated_options_count": len(serialized_options),
-                "options_evaluated_json": json.dumps(serialized_options, ensure_ascii=True),
-            }
+    def quote(self, weight_lb: Any) -> Dict[str, Any]:
+        weight = _as_decimal(weight_lb)
+        if weight <= 0:
+            raise ValueError("weight_lb must be greater than zero")
 
-        options = self._build_options(weight)
-        selected = self._select_option(weight, options)
-        serialized_options = [self._serialize_option(option, selected["key"]) for option in options]
-        lowest = min(option["total_price"] for option in options)
-        highest = max(option["total_price"] for option in options)
-        decision_reason = self._build_decision_reason(weight, selected, serialized_options, lowest, highest)
+        strategy = (getattr(self.profile, "strategy", "PACKAGE_BLOCKS") or "PACKAGE_BLOCKS").upper()
+        if strategy == "PACKAGE_BLOCKS":
+            return self._quote_package_blocks(weight)
+        return self._quote_max_revenue(weight)
 
-        return {
-            "profile_id": self.profile.id,
-            "profile_name": self.profile.name,
-            "weight_lb": str(weight),
-            "strategy_selected": self.strategy,
-            "selected_price": str(selected["total_price"]),
-            "recommended_price": str(selected["total_price"]),
-            "selected_tier_id": selected["tier"].id if selected["tier"] else None,
-            "selected_tier_max_weight_lb": (
-                str(to_decimal(selected["tier"].max_weight_lb, WEIGHT_STEP))
-                if selected["tier"]
-                else None
-            ),
-            "selected_option_type": selected["option_type"],
-            "selected_base_price": str(selected["tier_price"]) if selected["tier_price"] is not None else None,
-            "allow_manual_override": self.profile.allow_manual_override,
-            "decision_reason": decision_reason,
-            "options_evaluated": serialized_options,
-            "lowest_valid_price": str(lowest),
-            "highest_valid_price": str(highest),
-            "difference_selected_vs_lowest": str(to_decimal(selected["total_price"] - lowest)),
-            "difference_selected_vs_highest": str(to_decimal(highest - selected["total_price"])),
-            "compare_all_tiers": self.profile.compare_all_tiers,
-            "round_mode": self.round_mode,
-            "evaluated_options_count": len(serialized_options),
-            "options_evaluated_json": json.dumps(serialized_options, ensure_ascii=True),
-        }
-
-    def _build_options(self, weight):
-        covering_tier = next((tier for tier in self.tiers if to_decimal(tier.max_weight_lb, WEIGHT_STEP) >= weight), None)
-        lower_tiers = [tier for tier in self.tiers if to_decimal(tier.max_weight_lb, WEIGHT_STEP) <= weight]
-        base_tier = lower_tiers[-1] if lower_tiers else None
+    def _quote_max_revenue(self, weight: Decimal) -> Dict[str, Any]:
+        extra_lb_price = _as_decimal(getattr(self.profile, "extra_lb_price", "0.00"), "0.00")
         options = []
+        best_tier_fit_prices = []
+        base_plus_extra_prices = []
 
-        if covering_tier:
-            options.append(self._make_tier_option(covering_tier, "BEST_TIER_FIT", weight))
-        if base_tier:
-            options.append(self._make_base_plus_extra_option(base_tier, weight))
-        elif covering_tier:
-            options.append(self._make_tier_option(covering_tier, "MIN_TIER_COVERAGE", weight))
+        for tier in self.tiers:
+            tier_weight = _as_decimal(getattr(tier, "max_weight_lb"))
+            tier_price = _money(getattr(tier, "price"))
+            if weight <= tier_weight:
+                best_fit_option = {
+                    "option_type": "BEST_TIER_FIT",
+                    "tier_id": getattr(tier, "id", None),
+                    "tier_max_weight_lb": _decimal_to_str(tier_weight),
+                    "price": _decimal_to_str(tier_price),
+                    "extra_lb": _decimal_to_str("0.00"),
+                    "extra_charge": _decimal_to_str("0.00"),
+                }
+                options.append(best_fit_option)
+                best_tier_fit_prices.append(tier_price)
 
-        if self.profile.compare_all_tiers:
-            for tier in self.tiers:
-                tier_weight = to_decimal(tier.max_weight_lb, WEIGHT_STEP)
-                if tier_weight >= weight:
-                    options.append(self._make_tier_option(tier, "ALL_TIERS_COVERAGE", weight))
-                else:
-                    options.append(self._make_base_plus_extra_option(tier, weight, option_type="ALL_TIERS_BASE_PLUS_EXTRA"))
+            base_price = tier_price
+            extra_lb = max(weight - tier_weight, Decimal("0.00"))
+            extra_charge = _money(extra_lb * extra_lb_price)
+            total_price = _money(base_price + extra_charge)
+            base_option = {
+                "option_type": "BASE_PLUS_EXTRA",
+                "tier_id": getattr(tier, "id", None),
+                "tier_max_weight_lb": _decimal_to_str(tier_weight),
+                "price": _decimal_to_str(total_price),
+                "extra_lb": _decimal_to_str(extra_lb),
+                "extra_charge": _decimal_to_str(extra_charge),
+            }
+            options.append(base_option)
+            base_plus_extra_prices.append(total_price)
 
-        deduped = []
-        seen = set()
-        for option in options:
-            key = option["key"]
-            if key in seen:
-                continue
-            seen.add(key)
-            deduped.append(option)
-        return deduped
+        selected = max(options, key=lambda option: Decimal(option["price"]))
+        lowest = min(Decimal(option["price"]) for option in options)
+        highest = max(Decimal(option["price"]) for option in options)
+        strategy_name = (getattr(self.profile, "strategy", "MAX_REVENUE") or "MAX_REVENUE").upper()
 
-    def _make_tier_option(self, tier, option_type, weight):
-        tier_price = to_decimal(tier.price)
-        tier_weight = to_decimal(tier.max_weight_lb, WEIGHT_STEP)
-        reason = f"Tier {tier_weight} lb cubre el peso {weight} lb con precio fijo {tier_price}."
+        decision_parts = []
+        if best_tier_fit_prices:
+            decision_parts.append(f"BEST_TIER_FIT={_decimal_to_str(max(best_tier_fit_prices))}")
+        if base_plus_extra_prices:
+            decision_parts.append(f"ALL_TIERS_BASE_PLUS_EXTRA={_decimal_to_str(max(base_plus_extra_prices))}")
+        decision_reason = f"{strategy_name}: " + ", ".join(decision_parts)
+
         return {
-            "key": f"{option_type}:{tier.id}:{tier_price}",
-            "option_type": option_type,
-            "tier": tier,
-            "tier_price": tier_price,
-            "extra_lb": to_decimal(0, WEIGHT_STEP),
-            "extra_charge": to_decimal(0),
-            "total_price": tier_price,
-            "reason": reason,
+            "selected_price": selected["price"],
+            "recommended_price": selected["price"],
+            "selected_option_type": selected["option_type"],
+            "selected_tier_id": selected["tier_id"],
+            "selected_tier_max_weight_lb": selected["tier_max_weight_lb"],
+            "highest_valid_price": _decimal_to_str(highest),
+            "lowest_valid_price": _decimal_to_str(lowest),
+            "difference_selected_vs_highest": _decimal_to_str(Decimal(selected["price"]) - highest),
+            "difference_selected_vs_lowest": _decimal_to_str(Decimal(selected["price"]) - lowest),
+            "allow_manual_override": bool(getattr(self.profile, "allow_manual_override", False)),
+            "evaluated_options_count": len(options),
+            "decision_reason": decision_reason,
+            "options_evaluated": options,
         }
 
-    def _make_base_plus_extra_option(self, tier, weight, option_type="BASE_PLUS_EXTRA"):
-        tier_price = to_decimal(tier.price)
-        tier_weight = to_decimal(tier.max_weight_lb, WEIGHT_STEP)
-        extra_lb = weight - tier_weight
-        if extra_lb < 0:
-            extra_lb = Decimal("0.00")
-        rounded_extra_lb = self._round_extra_lb(extra_lb)
-        extra_charge = to_decimal(rounded_extra_lb * self.extra_lb_price)
-        total_price = to_decimal(tier_price + extra_charge)
-        reason = (
-            f"Base {tier_weight} lb con {rounded_extra_lb} lb extra a {self.extra_lb_price} "
-            f"da total {total_price}."
-        )
-        return {
-            "key": f"{option_type}:{tier.id}:{total_price}",
-            "option_type": option_type,
-            "tier": tier,
-            "tier_price": tier_price,
-            "extra_lb": rounded_extra_lb,
-            "extra_charge": extra_charge,
-            "total_price": total_price,
-            "reason": reason,
-        }
-
-    def _round_extra_lb(self, extra_lb):
-        if self.round_mode == "ceil":
-            return Decimal(str(math.ceil(float(extra_lb))))
-        if self.round_mode == "floor":
-            return Decimal(str(math.floor(float(extra_lb))))
-        return to_decimal(extra_lb, WEIGHT_STEP)
-
-    def _find_tier_by_weight(self, expected_weight):
-        expected_weight = to_decimal(expected_weight, WEIGHT_STEP)
-        return next(
-            (
-                tier for tier in self.tiers
-                if to_decimal(tier.max_weight_lb, WEIGHT_STEP) == expected_weight
-            ),
-            None,
-        )
-
-    def _make_package_blocks_option(self, weight, allow_small_weight_by_lb=False):
-        tier_15 = self._find_tier_by_weight("15.00")
-        tier_25 = self._find_tier_by_weight("25.00")
+    def _quote_package_blocks(self, weight: Decimal) -> Dict[str, Any]:
+        tiers_by_weight = {int(_as_decimal(tier.max_weight_lb)): tier for tier in self.tiers}
+        tier_15 = tiers_by_weight.get(15)
+        tier_25 = tiers_by_weight.get(25)
         if not tier_15 or not tier_25:
             raise ValueError("PACKAGE_BLOCKS strategy requires active 15 lb and 25 lb tiers")
 
-        if weight <= Decimal("15.00"):
-            if allow_small_weight_by_lb and weight <= Decimal("11.00"):
-                extra_lb = self._round_extra_lb(weight)
-                extra_charge = to_decimal(extra_lb * self.extra_lb_price)
-                reason = (
-                    f"Estrategia PACKAGE_BLOCKS con excepcion por servicio adicional cobrable: "
-                    f"{extra_lb} lb cobradas por libra a {self.extra_lb_price}. Total {extra_charge}."
-                )
-                return {
-                    "key": f"PACKAGE_BLOCKS_SMALL_WEIGHT_BY_LB:{weight}:{extra_charge}",
-                    "option_type": "PACKAGE_BLOCKS_SMALL_WEIGHT_BY_LB",
-                    "tier": None,
-                    "tier_price": None,
-                    "extra_lb": extra_lb,
-                    "extra_charge": extra_charge,
-                    "total_price": extra_charge,
-                    "reason": reason,
-                }
-            return self._make_tier_option(tier_15, "PACKAGE_BLOCKS_MIN_15", weight)
+        tier_15_price = _money(tier_15.price)
+        tier_25_price = _money(tier_25.price)
+        extra_lb_price = _as_decimal(getattr(self.profile, "extra_lb_price", "0.00"), "0.00")
 
-        blocks_25 = int(weight // Decimal("25.00"))
-        remainder_after_25 = weight - (Decimal(blocks_25) * Decimal("25.00"))
-        if remainder_after_25 >= Decimal("20.00"):
-            blocks_25 += 1
-            remainder_after_25 = Decimal("0.00")
+        blocks_25 = int((weight / Decimal("25")).to_integral_value(rounding=ROUND_FLOOR))
+        remainder = weight - (Decimal(blocks_25) * Decimal("25"))
 
-        blocks_15 = int(remainder_after_25 // Decimal("15.00"))
-        remainder_after_15 = remainder_after_25 - (Decimal(blocks_15) * Decimal("15.00"))
+        decision_bits = [f"{blocks_25} bloque(s) de 25 lb"]
+        charged_25_blocks = blocks_25
+        charged_15_blocks = 0
+        extra_lb = Decimal("0.00")
 
-        extra_charge = to_decimal(0)
-        extra_lb = to_decimal(0, WEIGHT_STEP)
-        remainder_label = "sin remanente"
-
-        if remainder_after_15 > 0:
-            if remainder_after_15 <= Decimal("7.00"):
-                extra_lb = self._round_extra_lb(remainder_after_15)
-                extra_charge = to_decimal(extra_lb * self.extra_lb_price)
-                remainder_label = f"{extra_lb} lb extra"
-            else:
-                blocks_15 += 1
-                remainder_label = "remanente redondeado a bloque de 15 lb"
-
-        total_25 = to_decimal(Decimal(blocks_25) * to_decimal(tier_25.price))
-        total_15 = to_decimal(Decimal(blocks_15) * to_decimal(tier_15.price))
-        total_price = to_decimal(total_25 + total_15 + extra_charge)
-
-        selected_tier = tier_25 if blocks_25 > 0 else tier_15
-        selected_base_price = to_decimal(selected_tier.price) if selected_tier else None
-        reason_parts = [f"Estrategia PACKAGE_BLOCKS: {blocks_25} bloque(s) de 25 lb"]
-        if remainder_after_25 == Decimal("0.00") and weight % Decimal("25.00") >= Decimal("20.00"):
-            reason_parts.append("remanente >= 20 lb redondeado a bloque de 25 lb")
+        if remainder == Decimal("0.00"):
+            pass
+        elif remainder >= Decimal("20.00"):
+            charged_25_blocks += 1
+            decision_bits.append("remanente >= 20 lb redondeado a bloque de 25 lb")
+            remainder = Decimal("0.00")
+        elif remainder >= Decimal("15.00"):
+            charged_15_blocks += 1
+            extra_lb = remainder - Decimal("15.00")
+            decision_bits.append("1 bloque(s) de 15 lb")
+            if extra_lb > 0:
+                decision_bits.append(f"{_decimal_to_str(extra_lb)} lb extra")
+        elif remainder >= Decimal("8.00"):
+            charged_15_blocks += 1
+            decision_bits.append("remanente redondeado a bloque de 15 lb")
+            remainder = Decimal("0.00")
         else:
-            reason_parts.append(f"{blocks_15} bloque(s) de 15 lb y {remainder_label}")
-        reason = f"{', '.join(reason_parts)}. Total {total_price}."
+            extra_lb = remainder
+            decision_bits.append(f"{_decimal_to_str(extra_lb)} lb extra")
 
-        return {
-            "key": f"PACKAGE_BLOCKS:{weight}:{total_price}",
+        extra_charge = _money(extra_lb * extra_lb_price)
+        selected_price = _money(
+            (Decimal(charged_25_blocks) * tier_25_price)
+            + (Decimal(charged_15_blocks) * tier_15_price)
+            + extra_charge
+        )
+
+        option = {
             "option_type": "PACKAGE_BLOCKS",
-            "tier": selected_tier,
-            "tier_price": selected_base_price,
-            "extra_lb": extra_lb,
-            "extra_charge": extra_charge,
-            "total_price": total_price,
-            "reason": reason,
+            "tier_id": getattr(tier_25, "id", None),
+            "tier_max_weight_lb": _decimal_to_str("25.00"),
+            "price": _decimal_to_str(selected_price),
+            "extra_lb": _decimal_to_str(extra_lb),
+            "extra_charge": _decimal_to_str(extra_charge),
         }
 
-    def _select_option(self, weight, options):
-        sorted_by_total = sorted(options, key=lambda option: (option["total_price"], option["tier"].id if option["tier"] else 0))
-        best_tier_fit = next(
-            (
-                option
-                for option in options
-                if option["option_type"] in {"BEST_TIER_FIT", "ALL_TIERS_COVERAGE", "MIN_TIER_COVERAGE"}
-                and to_decimal(option["tier"].max_weight_lb, WEIGHT_STEP) >= weight
-            ),
-            None,
-        )
-        base_plus_extra = next(
-            (
-                option
-                for option in options
-                if option["option_type"] in {"BASE_PLUS_EXTRA", "ALL_TIERS_BASE_PLUS_EXTRA"}
-            ),
-            None,
-        )
-        highest = max(options, key=lambda option: (option["total_price"], option["tier"].id if option["tier"] else 0))
-        lowest = min(options, key=lambda option: (option["total_price"], option["tier"].id if option["tier"] else 0))
-
-        if self.strategy == "MAX_REVENUE":
-            selected = highest
-            selected["reason"] = (
-                f"Estrategia MAX_REVENUE: se evaluaron todas las alternativas validas y se eligio el mayor total "
-                f"permitido {selected['total_price']}."
-            )
-            return selected
-
-        if self.strategy == "CUSTOMER_BEST_PRICE":
-            selected = lowest
-            selected["reason"] = (
-                f"Estrategia CUSTOMER_BEST_PRICE: se eligio la alternativa mas baja {selected['total_price']}."
-            )
-            return selected
-
-        if self.strategy == "BASE_PLUS_EXTRA" and base_plus_extra:
-            selected = base_plus_extra
-            selected["reason"] = (
-                f"Estrategia BASE_PLUS_EXTRA: se uso el tier base mas cercano y se agregaron libras extra."
-            )
-            return selected
-
-        if self.strategy == "PROMOTIONAL_UPGRADE" and best_tier_fit:
-            selected = best_tier_fit
-            if self.profile.auto_upgrade_enabled:
-                upper_options = [
-                    option
-                    for option in options
-                    if option["tier"]
-                    and to_decimal(option["tier"].max_weight_lb, WEIGHT_STEP)
-                    > to_decimal(best_tier_fit["tier"].max_weight_lb, WEIGHT_STEP)
-                    and option["option_type"] in {"BEST_TIER_FIT", "ALL_TIERS_COVERAGE"}
-                ]
-                if upper_options:
-                    upper = min(
-                        upper_options,
-                        key=lambda option: to_decimal(option["tier"].max_weight_lb, WEIGHT_STEP),
-                    )
-                    margin = to_decimal(upper["total_price"] - best_tier_fit["total_price"])
-                    allowed_margin = to_decimal(self.profile.auto_upgrade_margin or 0)
-                    if margin <= allowed_margin:
-                        upper["reason"] = (
-                            f"Estrategia PROMOTIONAL_UPGRADE: se promovio al tier superior dentro del margen {allowed_margin}."
-                        )
-                        return upper
-            selected["reason"] = "Estrategia PROMOTIONAL_UPGRADE: no aplico promocion, se uso el best tier fit."
-            return selected
-
-        if self.strategy == "FORCE_UPGRADE_FROM_WEIGHT" and best_tier_fit:
-            threshold = to_decimal(self.profile.force_upgrade_from_lb, WEIGHT_STEP) if self.profile.force_upgrade_from_lb is not None else None
-            if threshold is not None and weight >= threshold:
-                upper_options = [
-                    option
-                    for option in options
-                    if option["tier"]
-                    and to_decimal(option["tier"].max_weight_lb, WEIGHT_STEP)
-                    > to_decimal(best_tier_fit["tier"].max_weight_lb, WEIGHT_STEP)
-                    and option["option_type"] in {"BEST_TIER_FIT", "ALL_TIERS_COVERAGE"}
-                ]
-                if upper_options:
-                    upper = min(
-                        upper_options,
-                        key=lambda option: to_decimal(option["tier"].max_weight_lb, WEIGHT_STEP),
-                    )
-                    upper["reason"] = (
-                        f"Estrategia FORCE_UPGRADE_FROM_WEIGHT: el peso {weight} supera el umbral {threshold} "
-                        f"y se fuerza tier superior."
-                    )
-                    return upper
-            best_tier_fit["reason"] = "Estrategia FORCE_UPGRADE_FROM_WEIGHT: no se activo el umbral, se usa best tier fit."
-            return best_tier_fit
-
-        if best_tier_fit:
-            best_tier_fit["reason"] = "Estrategia BEST_TIER_FIT: se eligio el tier minimo que cubre el peso."
-            return best_tier_fit
-
-        return highest
-
-    def _serialize_option(self, option, selected_key):
         return {
-            "option_type": option["option_type"],
-            "tier_id": option["tier"].id if option["tier"] else None,
-            "tier_max_weight_lb": (
-                str(to_decimal(option["tier"].max_weight_lb, WEIGHT_STEP))
-                if option["tier"]
-                else None
-            ),
-            "tier_price": str(option["tier_price"]) if option["tier_price"] is not None else None,
-            "extra_lb": str(option["extra_lb"]),
-            "extra_charge": str(option["extra_charge"]),
-            "total_price": str(option["total_price"]),
-            "reason": option["reason"],
-            "selected": option["key"] == selected_key,
+            "selected_price": option["price"],
+            "recommended_price": option["price"],
+            "selected_option_type": "PACKAGE_BLOCKS",
+            "selected_tier_id": getattr(tier_25, "id", None),
+            "selected_tier_max_weight_lb": option["tier_max_weight_lb"],
+            "highest_valid_price": option["price"],
+            "lowest_valid_price": option["price"],
+            "difference_selected_vs_highest": _decimal_to_str("0.00"),
+            "difference_selected_vs_lowest": _decimal_to_str("0.00"),
+            "allow_manual_override": bool(getattr(self.profile, "allow_manual_override", False)),
+            "evaluated_options_count": 1,
+            "decision_reason": "PACKAGE_BLOCKS: " + ", ".join(decision_bits),
+            "options_evaluated": [option],
         }
 
-    def _build_decision_reason(self, weight, selected, serialized_options, lowest, highest):
-        selected_total = to_decimal(selected["total_price"])
-        option_summaries = ", ".join(
-            f"{option['option_type']}={option['total_price']}"
-            for option in serialized_options
-        )
-        return (
-            f"Perfil '{self.profile.name}' con estrategia {self.strategy} para peso {weight} lb. "
-            f"Se evaluaron {len(serialized_options)} alternativas: {option_summaries}. "
-            f"La alternativa seleccionada fue {selected['option_type']} con total {selected_total}. "
-            f"El minimo valido fue {to_decimal(lowest)} y el maximo valido fue {to_decimal(highest)}. "
-            f"Motivo comercial: {selected['reason']}"
-        )
+
+DEFAULT_WEIGHT_PRICING_CONFIG = {
+    "tier_1_max_lb": Decimal("15.00"),
+    "tier_1_price": Decimal("9.99"),
+    "tier_2_max_lb": Decimal("25.00"),
+    "tier_2_price": Decimal("14.99"),
+    "extra_lb_price": Decimal("0.90"),
+    "min_price_no_services": Decimal("9.99"),
+}
+
+
+def normalize_weight_pricing_config(raw_config: Optional[Dict[str, Any]] = None) -> Dict[str, Decimal]:
+    raw_config = raw_config or {}
+    normalized = {}
+    for key, default_value in DEFAULT_WEIGHT_PRICING_CONFIG.items():
+        normalized[key] = _money(raw_config.get(key, default_value))
+    return normalized
+
+
+def calculate_weight_service_quote(
+    weight_lb: Any,
+    has_other_services: bool,
+    pricing_config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    weight = _money(weight_lb)
+    if weight <= 0:
+        raise ValueError("weight_lb must be greater than zero")
+
+    config = normalize_weight_pricing_config(pricing_config)
+    tier_1_max_lb = config["tier_1_max_lb"]
+    tier_1_price = config["tier_1_price"]
+    tier_2_max_lb = config["tier_2_max_lb"]
+    tier_2_price = config["tier_2_price"]
+    extra_lb_price = config["extra_lb_price"]
+    min_price = config["min_price_no_services"]
+
+    applied_rules = {
+        "upgraded_to_25lb": False,
+        "upgraded_to_15lb": False,
+        "minimum_fee_applied": False,
+        "preferential_rate_applied": False,
+    }
+    charged_as = "Lavado por Peso"
+
+    if Decimal("1.00") <= weight <= Decimal("11.00") and has_other_services:
+        friendly_price = _money(weight * extra_lb_price)
+        strict_price = friendly_price
+        applied_rules["preferential_rate_applied"] = True
+        charged_as = "Tarifa Preferencial (Libras Extra)"
+    else:
+        blocks_25 = int((weight / tier_2_max_lb).to_integral_value(rounding=ROUND_FLOOR))
+        remainder_after_25 = weight % tier_2_max_lb
+
+        blocks_15 = int((remainder_after_25 / tier_1_max_lb).to_integral_value(rounding=ROUND_FLOOR))
+        extra_lb = remainder_after_25 % tier_1_max_lb
+
+        cost_blocks_25 = _money(Decimal(blocks_25) * tier_2_price)
+        cost_blocks_15 = _money(Decimal(blocks_15) * tier_1_price)
+        cost_extra_lb = _money(extra_lb * extra_lb_price)
+        remainder_cost = _money(cost_blocks_15 + cost_extra_lb)
+
+        strict_price = _money(cost_blocks_25 + remainder_cost)
+        friendly_price = strict_price
+
+        if remainder_cost > tier_2_price:
+            friendly_price = _money(cost_blocks_25 + tier_2_price)
+            applied_rules["upgraded_to_25lb"] = True
+            charged_as = f"Promocion {int(tier_2_max_lb)}lb"
+        elif remainder_after_25 <= tier_1_max_lb and remainder_cost > tier_1_price:
+            friendly_price = _money(cost_blocks_25 + tier_1_price)
+            applied_rules["upgraded_to_15lb"] = True
+            charged_as = f"Promocion {int(tier_1_max_lb)}lb"
+
+        if not has_other_services and weight <= tier_1_max_lb and friendly_price < min_price:
+            friendly_price = min_price
+            if strict_price < min_price:
+                strict_price = min_price
+            applied_rules["minimum_fee_applied"] = True
+            charged_as = "Tarifa Minima (Promocion 15lb)"
+
+    total_saved = _money(strict_price - friendly_price)
+    return {
+        "summary": {
+            "final_price": _decimal_to_str(friendly_price),
+            "strict_price": _decimal_to_str(strict_price),
+            "total_saved": _decimal_to_str(total_saved),
+            "is_friendly_applied": friendly_price < strict_price,
+        },
+        "breakdown": {
+            "total_weight": _decimal_to_str(weight),
+            "charged_as": charged_as,
+            "has_other_services": bool(has_other_services),
+        },
+        "applied_rules": applied_rules,
+        "config_used": {key: _decimal_to_str(value) for key, value in config.items()},
+    }

@@ -6,14 +6,12 @@ from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 
 from app.modules.laundry.queue.events import emit_queue_updated
+from app.services.weight_pricing import calculate_weight_service_quote
 from db import db
 from models.client import Client, ClientAddress
-from models.garment_type import GarmentType
+from models.global_setting import GlobalSetting
 from models.laundry_activity_log import LaundryActivityLog
 from models.laundry_service import LaundryService
-from models.laundry_service_extra import LaundryServiceExtra
-from models.laundry_service_item import LaundryServiceItem
-from models.service_extra_type import ServiceExtraType
 from schemas.laundry_service_v2_schema import LaundryServiceV2Schema, LaundryServiceV2UpsertSchema
 
 
@@ -105,65 +103,6 @@ def _validate_client_and_address(client_id, client_address_id):
     return client, address, None
 
 
-def _build_item_models(items_data):
-    models = []
-    for row in items_data:
-        garment_type = GarmentType.query.get(row["garment_type_id"])
-        if not garment_type:
-            return None, ({"error": f"GarmentType {row['garment_type_id']} not found"}, 404)
-
-        unit_price = row.get("unit_price")
-        subtotal = _line_subtotal(row["quantity"], unit_price)
-        models.append(
-            LaundryServiceItem(
-                garment_type_id=row["garment_type_id"],
-                quantity=_as_money(row["quantity"]),
-                unit_type=row["unit_type"],
-                unit_price=_as_money(unit_price),
-                subtotal=subtotal,
-                notes=row.get("notes"),
-            )
-        )
-    return models, None
-
-
-def _build_extra_models(extras_data):
-    models = []
-    for row in extras_data:
-        extra_type = ServiceExtraType.query.get(row["service_extra_type_id"])
-        if not extra_type:
-            return None, ({"error": f"ServiceExtraType {row['service_extra_type_id']} not found"}, 404)
-
-        unit_price = row.get("unit_price")
-        subtotal = _line_subtotal(row["quantity"], unit_price)
-        models.append(
-            LaundryServiceExtra(
-                service_extra_type_id=row["service_extra_type_id"],
-                quantity=_as_money(row["quantity"]),
-                unit_price=_as_money(unit_price),
-                subtotal=subtotal,
-                notes=row.get("notes"),
-            )
-        )
-    return models, None
-
-
-def _apply_nested_rows(service, data):
-    if "items" in data:
-        item_models, item_error = _build_item_models(data["items"])
-        if item_error:
-            return item_error
-        service.items = item_models
-
-    if "extras" in data:
-        extra_models, extra_error = _build_extra_models(data["extras"])
-        if extra_error:
-            return extra_error
-        service.extras = extra_models
-
-    return None
-
-
 def _service_query():
     return LaundryService.query.options(
         selectinload(LaundryService.client),
@@ -171,9 +110,31 @@ def _service_query():
         selectinload(LaundryService.transaction),
         selectinload(LaundryService.created_by_user),
         selectinload(LaundryService.logs),
-        selectinload(LaundryService.items).selectinload(LaundryServiceItem.garment_type),
-        selectinload(LaundryService.extras).selectinload(LaundryServiceExtra.service_extra_type),
     )
+
+
+def _load_weight_pricing_config():
+    setting_keys = [
+        "weight_tier_1_max_lb",
+        "weight_tier_1_price",
+        "weight_tier_2_max_lb",
+        "weight_tier_2_price",
+        "weight_extra_lb_price",
+        "weight_min_price_no_services",
+    ]
+    rows = GlobalSetting.query.filter(
+        GlobalSetting.key.in_(setting_keys),
+        GlobalSetting.is_active.is_(True),
+    ).all()
+    by_key = {row.key: row.value for row in rows}
+    return {
+        "tier_1_max_lb": by_key.get("weight_tier_1_max_lb"),
+        "tier_1_price": by_key.get("weight_tier_1_price"),
+        "tier_2_max_lb": by_key.get("weight_tier_2_max_lb"),
+        "tier_2_price": by_key.get("weight_tier_2_price"),
+        "extra_lb_price": by_key.get("weight_extra_lb_price"),
+        "min_price_no_services": by_key.get("weight_min_price_no_services"),
+    }
 
 
 @laundry_service_v2_bp.route("", methods=["GET"])
@@ -200,6 +161,30 @@ def get_all():
         "per_page": pagination.per_page,
         "pages": pagination.pages,
     }), 200
+
+
+@laundry_service_v2_bp.route("/weight-quote", methods=["POST"])
+@jwt_required()
+def quote_weight_service():
+    json_data = request.get_json() or {}
+    weight_lb = json_data.get("weight_lb")
+    has_other_services = json_data.get("has_other_services", False)
+
+    if weight_lb is None:
+        return jsonify({"error": "weight_lb is required"}), 400
+    if not isinstance(has_other_services, bool):
+        return jsonify({"error": "has_other_services must be boolean"}), 400
+
+    try:
+        result = calculate_weight_service_quote(
+            weight_lb=weight_lb,
+            has_other_services=has_other_services,
+            pricing_config=_load_weight_pricing_config(),
+        )
+    except (ArithmeticError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    return jsonify(result), 200
 
 
 @laundry_service_v2_bp.route("/<int:service_id>", methods=["GET"])
@@ -242,11 +227,6 @@ def create():
         service.pending_order = _next_pending_order()
     else:
         _sync_pending_order_for_status(service)
-
-    nested_error = _apply_nested_rows(service, data)
-    if nested_error:
-        payload, code = nested_error
-        return jsonify(payload), code
 
     db.session.add(service)
     db.session.commit()
