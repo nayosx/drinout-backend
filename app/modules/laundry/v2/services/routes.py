@@ -726,8 +726,10 @@ def _build_weight_order_item(laundry_service_id, weight_payload, default_has_oth
         raise ValueError("weight_service.weight_lb is required")
 
     garments = weight_payload.get("garments")
-    if not isinstance(garments, list) or not garments:
-        raise ValueError("weight_service.garments must be a non-empty list")
+    if garments is None:
+        garments = []
+    if not isinstance(garments, list):
+        raise ValueError("weight_service.garments must be a list")
 
     seen_garment_ids = set()
     normalized_garments = []
