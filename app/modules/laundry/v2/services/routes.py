@@ -122,12 +122,12 @@ def _service_query():
 
 def _load_weight_pricing_config():
     setting_keys = [
-        "weight_tier_1_max_lb",
-        "weight_tier_1_price",
-        "weight_tier_2_max_lb",
-        "weight_tier_2_price",
-        "weight_extra_lb_price",
-        "weight_min_price_no_services",
+        "laundry_weight_tier_1_max_lb",
+        "laundry_weight_tier_1_price",
+        "laundry_weight_tier_2_max_lb",
+        "laundry_weight_tier_2_price",
+        "laundry_weight_extra_lb_price",
+        "laundry_weight_min_price_no_services",
     ]
     rows = GlobalSetting.query.filter(
         GlobalSetting.key.in_(setting_keys),
@@ -135,12 +135,12 @@ def _load_weight_pricing_config():
     ).all()
     by_key = {row.key: row.value for row in rows}
     return {
-        "tier_1_max_lb": by_key.get("weight_tier_1_max_lb"),
-        "tier_1_price": by_key.get("weight_tier_1_price"),
-        "tier_2_max_lb": by_key.get("weight_tier_2_max_lb"),
-        "tier_2_price": by_key.get("weight_tier_2_price"),
-        "extra_lb_price": by_key.get("weight_extra_lb_price"),
-        "min_price_no_services": by_key.get("weight_min_price_no_services"),
+        "tier_1_max_lb": by_key.get("laundry_weight_tier_1_max_lb"),
+        "tier_1_price": by_key.get("laundry_weight_tier_1_price"),
+        "tier_2_max_lb": by_key.get("laundry_weight_tier_2_max_lb"),
+        "tier_2_price": by_key.get("laundry_weight_tier_2_price"),
+        "extra_lb_price": by_key.get("laundry_weight_extra_lb_price"),
+        "min_price_no_services": by_key.get("laundry_weight_min_price_no_services"),
     }
 
 
