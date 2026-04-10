@@ -719,7 +719,7 @@ def _build_fixed_order_items(laundry_service_id, rows):
     return items
 
 
-def _build_weight_order_item(laundry_service_id, weight_payload, default_has_other_services):
+def _build_weight_order_item(laundry_service_id, weight_payload, has_other_services):
     weight_service = _resolve_weight_service_catalog()
     weight_lb = weight_payload.get("weight_lb")
     if weight_lb is None:
@@ -752,12 +752,6 @@ def _build_weight_order_item(laundry_service_id, weight_payload, default_has_oth
                 "quantity": f"{quantity:.2f}",
             }
         )
-
-    has_other_services_raw = weight_payload.get("has_other_services")
-    if has_other_services_raw is None:
-        has_other_services = default_has_other_services
-    else:
-        has_other_services = _as_bool(has_other_services_raw, "weight_service.has_other_services")
 
     quote = calculate_weight_service_quote(
         weight_lb=weight_lb,
@@ -812,7 +806,7 @@ def _replace_manual_order_items(service, data):
         weight_item = _build_weight_order_item(
             service.id,
             weight_payload,
-            default_has_other_services=bool(fixed_items),
+            has_other_services=bool(fixed_items),
         )
         db.session.add(weight_item)
 
