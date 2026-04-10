@@ -780,9 +780,21 @@ def _build_weight_order_item(laundry_service_id, weight_payload, has_other_servi
 
 
 def _replace_manual_order_items(service, data):
+    has_weight_service_key = "weight_service" in data
     rows = data.get("order_items")
     weight_payload = data.get("weight_service")
     if rows is None and weight_payload is None:
+        if has_weight_service_key:
+            weight_service_ids = (
+                db.session.query(CatalogServiceLegacy.id)
+                .filter(CatalogServiceLegacy.pricing_mode == CatalogServiceLegacy.PRICING_MODE_WEIGHT)
+            )
+            (
+                OrderItem.query
+                .filter(OrderItem.laundry_service_id == service.id)
+                .filter(OrderItem.service_id.in_(weight_service_ids))
+                .delete(synchronize_session=False)
+            )
         return
 
     if rows is not None and not isinstance(rows, list):
