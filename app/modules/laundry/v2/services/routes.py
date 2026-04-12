@@ -1083,6 +1083,9 @@ def patch_commercial_detail(service_id):
     current_user_id = get_jwt_identity()
 
     try:
+        notes = json_data.get("notes")
+        if notes not in (None, ""):
+            service.notes = notes
         _replace_manual_order_items(service, json_data)
         _replace_extras(service, json_data.get("extras"))
     except (ArithmeticError, ValueError) as exc:
