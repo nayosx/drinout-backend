@@ -866,6 +866,79 @@ def _replace_extras(service, rows):
         seen_extra_ids.add(extra_id)
 
 
+def _apply_summary_price_overrides(service, data):
+    order_item_rows = data.get("order_items")
+    extra_rows = data.get("extras")
+
+    if order_item_rows is None and extra_rows is None:
+        raise ValueError("At least one of order_items or extras is required")
+    if order_item_rows is not None and not isinstance(order_item_rows, list):
+        raise ValueError("order_items must be a list")
+    if extra_rows is not None and not isinstance(extra_rows, list):
+        raise ValueError("extras must be a list")
+
+    if order_item_rows is not None:
+        seen_order_item_ids = set()
+        for row in order_item_rows:
+            if not isinstance(row, dict):
+                raise ValueError("Each order_items row must be an object")
+            item_id = row.get("id")
+            if item_id is None:
+                raise ValueError("id is required in order_items")
+            if item_id in seen_order_item_ids:
+                raise ValueError("Duplicate id in order_items payload")
+            if "applied_price" not in row:
+                raise ValueError("applied_price is required in order_items")
+
+            applied_price = _as_money(row.get("applied_price"))
+            if applied_price is None or applied_price < 0:
+                raise ValueError("applied_price must be zero or greater")
+
+            item = (
+                OrderItem.query
+                .filter_by(id=item_id, laundry_service_id=service.id)
+                .first()
+            )
+            if not item:
+                raise ValueError(f"Order item {item_id} not found for laundry service")
+
+            item.applied_price = applied_price
+            seen_order_item_ids.add(item_id)
+
+    if extra_rows is not None:
+        seen_extra_ids = set()
+        for row in extra_rows:
+            if not isinstance(row, dict):
+                raise ValueError("Each extras row must be an object")
+            extra_row_id = row.get("id")
+            if extra_row_id is None:
+                raise ValueError("id is required in extras")
+            if extra_row_id in seen_extra_ids:
+                raise ValueError("Duplicate id in extras payload")
+            if "unit_price" not in row:
+                raise ValueError("unit_price is required in extras")
+
+            unit_price = _as_money(row.get("unit_price"))
+            if unit_price is None or unit_price < 0:
+                raise ValueError("unit_price must be zero or greater")
+
+            extra = (
+                LaundryServiceExtra.query
+                .filter_by(id=extra_row_id, laundry_service_id=service.id)
+                .first()
+            )
+            if not extra:
+                raise ValueError(f"Extra {extra_row_id} not found for laundry service")
+
+            extra.unit_price = unit_price
+            extra.subtotal = (
+                Decimal("0.00")
+                if extra.is_courtesy
+                else _line_subtotal(extra.quantity, unit_price)
+            )
+            seen_extra_ids.add(extra_row_id)
+
+
 @laundry_service_v2_bp.route("", methods=["GET"])
 @jwt_required()
 def get_all():
@@ -1100,6 +1173,36 @@ def patch_commercial_detail(service_id):
             action="ACTUALIZACION",
             new_status=map_status_to_log_enum(service.status),
             description="Actualizacion de detalle comercial V2.",
+        )
+    )
+    db.session.commit()
+    service = _service_query().filter(LaundryService.id == service.id).first_or_404()
+    return jsonify(_build_summary_response(service)), 200
+
+
+@laundry_service_v2_bp.route("/<int:service_id>/summary/prices", methods=["PATCH"])
+@jwt_required()
+def patch_summary_prices(service_id):
+    service = _service_query().filter(LaundryService.id == service_id).first_or_404()
+    json_data = request.get_json()
+    if not json_data:
+        return jsonify({"error": "No input data provided"}), 400
+    current_user_id = get_jwt_identity()
+
+    try:
+        _apply_summary_price_overrides(service, json_data)
+    except (ArithmeticError, ValueError) as exc:
+        db.session.rollback()
+        return jsonify({"error": str(exc)}), 400
+
+    db.session.commit()
+    db.session.add(
+        LaundryActivityLog(
+            laundry_service_id=service.id,
+            user_id=current_user_id,
+            action="ACTUALIZACION",
+            new_status=map_status_to_log_enum(service.status),
+            description="Actualizacion de precios del resumen V2.",
         )
     )
     db.session.commit()

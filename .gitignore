@@ -181,4 +181,5 @@ sql/*.sql
 # Markdown notes/docs
 *.md
 !README.md
+!AGENTS.md
 notes/
