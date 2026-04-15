@@ -901,6 +901,19 @@ def _apply_summary_price_overrides(service, data):
             )
             if not item:
                 raise ValueError(f"Order item {item_id} not found for laundry service")
+            if item.service_id in _automatic_service_ids():
+                raise ValueError(
+                    "Automatic order items cannot be edited from summary prices. "
+                    "Update header values instead."
+                )
+            if (
+                item.service
+                and item.service.pricing_mode == CatalogServiceLegacy.PRICING_MODE_WEIGHT
+            ):
+                raise ValueError(
+                    "WEIGHT order items cannot be edited from summary prices. "
+                    "Update commercial detail values instead."
+                )
 
             item.applied_price = applied_price
             seen_order_item_ids.add(item_id)
