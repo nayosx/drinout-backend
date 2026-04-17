@@ -12,6 +12,9 @@ from app.modules.billing.transaction_categories.routes import transaction_catego
 from app.modules.clients.routes import clients_bp
 from app.modules.clients.address_routes import addresses_bp
 from app.modules.clients.phone_routes import phones_bp
+from app.modules.clients.service_type_surcharge_rule_routes import (
+    client_service_type_surcharge_rules_bp,
+)
 from app.modules.laundry.services.routes import laundry_service_bp
 from app.modules.laundry.service_extras.routes import laundry_service_extra_bp
 from app.modules.laundry.deliveries.routes import laundry_delivery_bp
@@ -45,6 +48,7 @@ def register_blueprints(app):
     app.register_blueprint(clients_bp)
     app.register_blueprint(addresses_bp)
     app.register_blueprint(phones_bp)
+    app.register_blueprint(client_service_type_surcharge_rules_bp)
     app.register_blueprint(laundry_service_bp)
     app.register_blueprint(laundry_service_extra_bp)
     app.register_blueprint(laundry_delivery_bp)

@@ -26,6 +26,12 @@ class Client(db.Model):
         lazy="selectin",
         cascade="all, delete-orphan"
     )
+    service_type_surcharge_rules = db.relationship(
+        "ClientServiceTypeSurchargeRule",
+        back_populates="client",
+        lazy="selectin",
+        cascade="all, delete-orphan"
+    )
 
 
 class ClientAddress(db.Model):

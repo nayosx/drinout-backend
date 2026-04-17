@@ -26,3 +26,4 @@ from .service_variant_legacy import ServiceVariantLegacy
 from .laundry_service_extra import LaundryServiceExtra
 from .order_item import OrderItem
 from .discount_rule import DiscountRule
+from .client_service_type_surcharge_rule import ClientServiceTypeSurchargeRule

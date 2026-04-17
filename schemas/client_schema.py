@@ -1,5 +1,8 @@
 from marshmallow import Schema, fields
 from schemas.base import LocalDateTimeMixin
+from schemas.client_service_type_surcharge_rule_schema import (
+    ClientServiceTypeSurchargeRuleSchema,
+)
 
 # ----------------------------
 # Cliente completo
@@ -87,6 +90,10 @@ class ClientDetailSchema(LocalDateTimeMixin, Schema):
     updated_at = fields.DateTime()
     addresses = fields.Nested(ClientAddressNoUpdateSchema, many=True)
     phones = fields.Nested(ClientPhoneNoUpdateSchema, many=True)
+    service_type_surcharge_rules = fields.Nested(
+        ClientServiceTypeSurchargeRuleSchema,
+        many=True,
+    )
 
 
 class ClientWithPhonesSchema(LocalDateTimeMixin, Schema):

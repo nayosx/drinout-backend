@@ -7,6 +7,10 @@ from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 
 from app.modules.laundry.queue.events import emit_queue_updated
+from app.modules.laundry.service_type_surcharge_rules import (
+    resolve_client_service_type_surcharge,
+    resolve_laundry_service_type_surcharge,
+)
 from app.services.discount_rules import calculate_commercial_discount
 from app.services.weight_pricing import calculate_weight_service_quote
 from db import db
@@ -155,16 +159,6 @@ def _load_delivery_price_per_km():
     return _as_money(setting.value)
 
 
-def _load_express_service_surcharge():
-    setting = GlobalSetting.query.filter_by(
-        key="express_service_surcharge",
-        is_active=True,
-    ).first()
-    if not setting:
-        raise ValueError("express_service_surcharge setting is not configured")
-    return _as_money(setting.value)
-
-
 def _build_default_delivery_order_item(laundry_service_id: int):
     delivery_service = (
         CatalogServiceLegacy.query
@@ -214,16 +208,13 @@ def _service_type_snapshot(service_label: str):
     )
 
 
-def _service_type_amount(service_label: str):
-    normalized_service_label = (service_label or "NORMAL").strip().upper()
-    if normalized_service_label == "EXPRESS":
-        return _load_express_service_surcharge()
-    return Decimal("0.00")
-
-
-def _build_default_service_type_order_item(laundry_service_id: int, service_label: str):
+def _build_default_service_type_order_item(
+    laundry_service_id: int,
+    client_id: int,
+    service_label: str,
+):
     service_type_catalog = _resolve_service_type_catalog()
-    surcharge_amount = _service_type_amount(service_label)
+    surcharge_amount = resolve_client_service_type_surcharge(client_id, service_label)
 
     return OrderItem(
         laundry_service_id=laundry_service_id,
@@ -240,7 +231,10 @@ def _build_default_service_type_order_item(laundry_service_id: int, service_labe
 
 def _sync_service_type_order_item(laundry_service_id: int, service_label: str):
     service_type_catalog = _resolve_service_type_catalog()
-    surcharge_amount = _service_type_amount(service_label)
+    surcharge_amount = resolve_laundry_service_type_surcharge(
+        laundry_service_id,
+        service_label,
+    )
 
     item = (
         OrderItem.query
@@ -1396,6 +1390,7 @@ def create():
         delivery_order_item = _build_default_delivery_order_item(service.id)
         service_type_order_item = _build_default_service_type_order_item(
             service.id,
+            service.client_id,
             service.service_label,
         )
     except ValueError as exc:
