@@ -25,3 +25,4 @@ from .catalog_service_legacy import CatalogServiceLegacy
 from .service_variant_legacy import ServiceVariantLegacy
 from .laundry_service_extra import LaundryServiceExtra
 from .order_item import OrderItem
+from .discount_rule import DiscountRule

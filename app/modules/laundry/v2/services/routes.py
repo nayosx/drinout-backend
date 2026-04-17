@@ -7,6 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 
 from app.modules.laundry.queue.events import emit_queue_updated
+from app.services.discount_rules import calculate_commercial_discount
 from app.services.weight_pricing import calculate_weight_service_quote
 from db import db
 from models.catalog_service_legacy import CatalogServiceLegacy
@@ -331,6 +332,10 @@ def _snapshot_to_text(snapshot):
     return json.dumps(snapshot, ensure_ascii=True)
 
 
+def _ensure_snapshot_dict(snapshot):
+    return _snapshot_to_dict(snapshot) or {}
+
+
 def _as_bool(value, field_name):
     if isinstance(value, bool):
         return value
@@ -353,6 +358,7 @@ def _serialize_decimal(value):
 
 
 def _order_item_payload(item):
+    snapshot = _ensure_snapshot_dict(item.calculation_snapshot)
     return {
         "id": item.id,
         "service_id": item.service_id,
@@ -368,10 +374,13 @@ def _order_item_payload(item):
         "garment_type_id": item.garment_type_id,
         "garment_type_name": item.garment_type.name if item.garment_type else None,
         "quantity": _serialize_decimal(item.quantity),
+        "unit_catalog_price": _serialize_decimal(
+            item.unit_catalog_price if item.unit_catalog_price is not None else snapshot.get("unit_catalog_price")
+        ),
         "catalog_price": _serialize_decimal(item.catalog_price),
         "applied_price": _serialize_decimal(item.applied_price),
         "is_friendly_discount": bool(item.is_friendly_discount),
-        "calculation_snapshot": _snapshot_to_dict(item.calculation_snapshot),
+        "calculation_snapshot": snapshot,
     }
 
 
@@ -458,7 +467,90 @@ def _build_weight_service_detail(item):
     return payload
 
 
-def _build_summary_response(service):
+def _resolve_fixed_item_unit_catalog_price(item):
+    if item.unit_catalog_price is not None:
+        return _as_money(item.unit_catalog_price)
+
+    snapshot = _ensure_snapshot_dict(item.calculation_snapshot)
+    snapshot_unit_price = snapshot.get("unit_catalog_price")
+    if snapshot_unit_price is not None:
+        return _as_money(snapshot_unit_price)
+
+    if item.service_variant and item.service_variant.price is not None:
+        return _as_money(item.service_variant.price)
+
+    quantity_money = _as_money(item.quantity)
+    if quantity_money and quantity_money > 0 and item.catalog_price is not None:
+        return _as_money(Decimal(str(item.catalog_price)) / Decimal(str(quantity_money)))
+
+    return None
+
+
+def _is_manual_price_override(item):
+    snapshot = _ensure_snapshot_dict(item.calculation_snapshot)
+    return bool(snapshot.get("manual_price_override"))
+
+
+def _build_commercial_manual_item_payload(item):
+    payload = _order_item_payload(item)
+    unit_catalog_price = _resolve_fixed_item_unit_catalog_price(item)
+    payload["unit_catalog_price"] = _serialize_decimal(unit_catalog_price)
+
+    quantity_money = _as_money(item.quantity)
+    if unit_catalog_price is None or quantity_money is None:
+        payload["discount_amount"] = "0.00"
+        payload["discount_rule"] = None
+        return payload
+
+    quantity_decimal = Decimal(str(quantity_money))
+    payload["catalog_price"] = _serialize_decimal(quantity_decimal * unit_catalog_price)
+
+    if _is_manual_price_override(item):
+        discount_amount = _as_money(Decimal(str(payload["catalog_price"])) - Decimal(str(item.applied_price or 0)))
+        payload["applied_price"] = _serialize_decimal(item.applied_price)
+        payload["discount_amount"] = _serialize_decimal(discount_amount)
+        payload["discount_rule"] = None
+        payload["calculation_snapshot"]["commercial_pricing"] = {
+            "source": "manual_override",
+            "unit_catalog_price": _serialize_decimal(unit_catalog_price),
+            "catalog_price": payload["catalog_price"],
+            "applied_price": payload["applied_price"],
+            "discount_amount": _serialize_decimal(discount_amount),
+        }
+        return payload
+
+    discount_result = calculate_commercial_discount(item, unit_catalog_price)
+    if discount_result is None:
+        catalog_subtotal = _as_money(quantity_decimal * unit_catalog_price)
+        payload["catalog_price"] = _serialize_decimal(catalog_subtotal)
+        payload["applied_price"] = _serialize_decimal(catalog_subtotal)
+        payload["discount_amount"] = "0.00"
+        payload["discount_rule"] = None
+        payload["calculation_snapshot"]["commercial_pricing"] = {
+            "source": "base_catalog",
+            "unit_catalog_price": _serialize_decimal(unit_catalog_price),
+            "catalog_price": payload["catalog_price"],
+            "applied_price": payload["applied_price"],
+            "discount_amount": "0.00",
+        }
+        return payload
+
+    payload["catalog_price"] = f"{discount_result['catalog_price']:.2f}"
+    payload["applied_price"] = f"{discount_result['applied_price']:.2f}"
+    payload["discount_amount"] = f"{discount_result['discount_amount']:.2f}"
+    payload["discount_rule"] = discount_result["rule"]
+    payload["calculation_snapshot"]["commercial_pricing"] = {
+        "source": "discount_rule",
+        "unit_catalog_price": _serialize_decimal(unit_catalog_price),
+        "catalog_price": payload["catalog_price"],
+        "applied_price": payload["applied_price"],
+        "discount_amount": payload["discount_amount"],
+        "rule": discount_result["rule"],
+    }
+    return payload
+
+
+def _build_summary_response(service, pricing_context="commercial"):
     items = _load_summary_order_items(service.id)
     extras = _load_summary_extras(service.id)
     automatic_ids = _automatic_service_ids()
@@ -472,17 +564,26 @@ def _build_summary_response(service):
     weight_subtotal = Decimal("0.00")
     extras_subtotal = Decimal("0.00")
 
+    normalized_pricing_context = (pricing_context or "commercial").strip().lower()
+
     for item in items:
         if item.service_id in automatic_ids:
-            automatic_items.append(_order_item_payload(item))
+            automatic_payload = _order_item_payload(item)
+            automatic_items.append(automatic_payload)
             automatic_subtotal += _as_money(item.applied_price or 0)
             continue
         if item.service and item.service.pricing_mode == CatalogServiceLegacy.PRICING_MODE_WEIGHT:
             weight_service_detail = _build_weight_service_detail(item)
             weight_subtotal += _as_money(item.applied_price or 0)
             continue
-        manual_items.append(_order_item_payload(item))
-        manual_subtotal += _as_money(item.applied_price or 0)
+
+        manual_payload = (
+            _build_commercial_manual_item_payload(item)
+            if normalized_pricing_context == "commercial"
+            else _order_item_payload(item)
+        )
+        manual_items.append(manual_payload)
+        manual_subtotal += _as_money(manual_payload["applied_price"] or 0)
 
     extra_payloads = []
     for extra in extras:
@@ -538,6 +639,7 @@ def _build_summary_response(service):
             "extras_subtotal": f"{extras_subtotal:.2f}",
             "grand_total": f"{grand_total:.2f}",
         },
+        "pricing_context": normalized_pricing_context,
     }
 
 
@@ -662,13 +764,6 @@ def _validate_fixed_order_item_payload(data):
     if quantity is None or quantity <= 0:
         raise ValueError("quantity must be greater than zero")
 
-    catalog_price = _as_money(data.get("catalog_price"))
-    applied_price = _as_money(data.get("applied_price"))
-    if catalog_price is None or catalog_price < 0:
-        raise ValueError("catalog_price must be zero or greater")
-    if applied_price is None or applied_price < 0:
-        raise ValueError("applied_price must be zero or greater")
-
     service_variant_id = data.get("service_variant_id")
     if data.get("garment_type_id") is not None:
         raise ValueError("garment_type_id only applies to WEIGHT services")
@@ -678,14 +773,40 @@ def _validate_fixed_order_item_payload(data):
         if not variant or variant.service_id != service.id:
             raise ValueError("service_variant_id does not belong to service_id")
 
+    unit_catalog_price = _as_money(data.get("unit_catalog_price"))
+    if unit_catalog_price is None and variant is not None and variant.price is not None:
+        unit_catalog_price = _as_money(variant.price)
+
+    if unit_catalog_price is not None:
+        if unit_catalog_price < 0:
+            raise ValueError("unit_catalog_price must be zero or greater")
+        catalog_price = _as_money(quantity * unit_catalog_price)
+        applied_price = catalog_price
+    else:
+        catalog_price = _as_money(data.get("catalog_price"))
+        applied_price = _as_money(data.get("applied_price"))
+        if catalog_price is None or catalog_price < 0:
+            raise ValueError("catalog_price must be zero or greater")
+        if applied_price is None or applied_price < 0:
+            raise ValueError("applied_price must be zero or greater")
+
     return {
         "service": service,
         "service_variant": variant,
         "quantity": quantity,
+        "unit_catalog_price": unit_catalog_price,
         "catalog_price": catalog_price,
         "applied_price": applied_price,
         "is_friendly_discount": bool(data.get("is_friendly_discount", False)),
-        "calculation_snapshot": _snapshot_to_text(data.get("calculation_snapshot")),
+        "calculation_snapshot": _snapshot_to_text(
+            {
+                **_ensure_snapshot_dict(data.get("calculation_snapshot")),
+                "unit_catalog_price": (
+                    f"{unit_catalog_price:.2f}" if unit_catalog_price is not None else None
+                ),
+                "manual_price_override": False,
+            }
+        ),
     }
 
 
@@ -710,6 +831,7 @@ def _build_fixed_order_items(laundry_service_id, rows):
                 ),
                 garment_type_id=None,
                 quantity=normalized["quantity"],
+                unit_catalog_price=normalized["unit_catalog_price"],
                 catalog_price=normalized["catalog_price"],
                 applied_price=normalized["applied_price"],
                 is_friendly_discount=normalized["is_friendly_discount"],
@@ -916,6 +1038,12 @@ def _apply_summary_price_overrides(service, data):
                 )
 
             item.applied_price = applied_price
+            snapshot = _ensure_snapshot_dict(item.calculation_snapshot)
+            snapshot["manual_price_override"] = True
+            snapshot["manual_applied_price"] = f"{applied_price:.2f}"
+            if item.unit_catalog_price is not None:
+                snapshot["unit_catalog_price"] = f"{_as_money(item.unit_catalog_price):.2f}"
+            item.calculation_snapshot = _snapshot_to_text(snapshot)
             seen_order_item_ids.add(item_id)
 
     if extra_rows is not None:
@@ -1097,7 +1225,11 @@ def get_one(service_id):
 @jwt_required()
 def get_summary(service_id):
     service = _service_query().filter(LaundryService.id == service_id).first_or_404()
-    return jsonify(_build_summary_response(service)), 200
+    pricing_context = request.args.get("pricing_context", default="commercial", type=str)
+    normalized_pricing_context = (pricing_context or "commercial").strip().lower()
+    if normalized_pricing_context not in {"commercial", "base"}:
+        return jsonify({"error": "pricing_context must be commercial or base"}), 400
+    return jsonify(_build_summary_response(service, pricing_context=normalized_pricing_context)), 200
 
 
 @laundry_service_v2_bp.route("/<int:service_id>/header", methods=["PATCH"])

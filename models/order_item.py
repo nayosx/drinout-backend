@@ -26,6 +26,7 @@ class OrderItem(db.Model):
         nullable=True,
     )
     quantity = db.Column(db.Numeric(10, 2), nullable=False)
+    unit_catalog_price = db.Column(db.Numeric(10, 2), nullable=True)
     catalog_price = db.Column(db.Numeric(10, 2), nullable=False)
     applied_price = db.Column(db.Numeric(10, 2), nullable=False)
     is_friendly_discount = db.Column(db.Boolean, nullable=True, default=False)
