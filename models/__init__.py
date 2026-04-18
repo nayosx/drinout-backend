@@ -14,6 +14,7 @@ from .menu_roles import menu_roles
 from .transaction_category import TransactionCategory
 from .client import Client, ClientAddress, ClientPhone
 from .refresh_token import RefreshToken
+from .user_shortcut import UserShortcut
 from .laundry_service import LaundryService
 from .laundry_delivery import LaundryDelivery
 from .laundry_activity_log import LaundryActivityLog

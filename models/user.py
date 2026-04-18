@@ -24,5 +24,12 @@ class User(db.Model):
         cascade="all, delete-orphan"
     )
 
+    shortcuts = relationship(
+        "UserShortcut",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="UserShortcut.sort_order, UserShortcut.id"
+    )
+
     def __repr__(self):
         return f"<User {self.username}>"
