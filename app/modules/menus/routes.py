@@ -50,14 +50,30 @@ def get_current_user_roles():
         return []
     return [user.role.id]
 
+def _serialize_menu_node(menu):
+    return {
+        "id": menu.id,
+        "key": menu.key,
+        "label": menu.label,
+        "path": menu.path,
+        "icon": menu.icon,
+        "show_in_sidebar": menu.show_in_sidebar,
+        "order": menu.order,
+        "parent_id": menu.parent_id,
+        "created_at": menu.created_at,
+        "updated_at": menu.updated_at,
+        "children": []
+    }
+
 def build_tree(flat_list):
-    items = {menu.id: menu for menu in flat_list}
+    items = {menu.id: _serialize_menu_node(menu) for menu in flat_list}
     roots = []
     for menu in flat_list:
+        current = items[menu.id]
         if menu.parent_id and menu.parent_id in items:
-            items[menu.parent_id].children.append(menu)
+            items[menu.parent_id]["children"].append(current)
         else:
-            roots.append(menu)
+            roots.append(current)
     return roots
 
 @menu_bp.route("", methods=["GET"])
