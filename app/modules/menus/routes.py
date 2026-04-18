@@ -1,4 +1,6 @@
 from flask import Blueprint, request, jsonify
+import re
+import unicodedata
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from models.menu import Menu
 from models.role import Role
@@ -8,6 +10,38 @@ from db import db
 
 menu_bp = Blueprint("menu_bp", __name__, url_prefix="/menus")
 menu_schema = MenuSchema(many=True)
+
+
+def _normalize_menu_key(value):
+    normalized = unicodedata.normalize("NFKD", str(value or ""))
+    ascii_value = normalized.encode("ascii", "ignore").decode("ascii").lower()
+    slug = re.sub(r"[^a-z0-9]+", "-", ascii_value).strip("-")
+    return slug or None
+
+
+def _build_menu_key(payload, menu=None):
+    explicit_key = payload.get("key")
+    if explicit_key is not None:
+        return _normalize_menu_key(explicit_key)
+
+    if menu and menu.key:
+        return menu.key
+
+    path_source = payload.get("path")
+    if path_source:
+        return _normalize_menu_key(str(path_source).strip("/"))
+
+    label_source = payload.get("label")
+    if label_source:
+        return _normalize_menu_key(label_source)
+
+    if menu and menu.path:
+        return _normalize_menu_key(str(menu.path).strip("/"))
+
+    if menu and menu.label:
+        return _normalize_menu_key(menu.label)
+
+    return None
 
 def get_current_user_roles():
     user_id = get_jwt_identity()
@@ -55,9 +89,16 @@ def create_menu():
     if not json_data:
         return jsonify({"error": "No input data provided"}), 400
     data = MenuSchema().load(json_data)
+    menu_key = _build_menu_key(data)
+    if not menu_key:
+        return jsonify({"error": "Menu key could not be generated"}), 400
+    if Menu.query.filter_by(key=menu_key).first():
+        return jsonify({"error": "Menu key already exists"}), 409
     menu = Menu(
+        key=menu_key,
         label=data["label"],
-        path=data["path"],
+        path=data.get("path"),
+        icon=data.get("icon"),
         show_in_sidebar=data.get("show_in_sidebar", True),
         order=data.get("order", 0),
         parent_id=data.get("parent_id")
@@ -73,7 +114,14 @@ def update_menu(menu_id):
     json_data = request.get_json()
     if not json_data:
         return jsonify({"error": "No input data provided"}), 400
-    for field in ["label", "path", "show_in_sidebar", "order", "parent_id"]:
+    next_key = _build_menu_key(json_data, menu=menu)
+    if not next_key:
+        return jsonify({"error": "Menu key could not be generated"}), 400
+    existing_menu = Menu.query.filter(Menu.key == next_key, Menu.id != menu.id).first()
+    if existing_menu:
+        return jsonify({"error": "Menu key already exists"}), 409
+    menu.key = next_key
+    for field in ["label", "path", "icon", "show_in_sidebar", "order", "parent_id"]:
         if field in json_data:
             setattr(menu, field, json_data[field])
     db.session.commit()
@@ -118,14 +166,16 @@ def get_all_menu_roles():
     result = [
         {
             "id": menu.id,
+            "key": menu.key,
             "label": menu.label,
             "path": menu.path,
+            "icon": menu.icon,
             "show_in_sidebar": menu.show_in_sidebar,
             "order": menu.order,
+            "parent_id": menu.parent_id,
             "roles": [role.id for role in menu.roles]
         }
         for menu in menus
     ]
 
     return jsonify(result), 200
-
