@@ -7,4 +7,5 @@ class MenuSchema(LocalDateTimeMixin, Schema):
     path = fields.Str()
     show_in_sidebar = fields.Bool()
     order = fields.Int()
+    parent_id = fields.Int(allow_none=True)
     children = fields.List(fields.Nested(lambda: MenuSchema()))
