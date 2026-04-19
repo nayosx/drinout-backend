@@ -7,9 +7,23 @@ services:
       dockerfile: Dockerfile
     working_dir: /app
     environment:
-      - FLASK_DEBUG=0
-      - PYTHONUNBUFFERED=1
-      - PYTHONDONTWRITEBYTECODE=1
+      FLASK_DEBUG: "0"
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: ${DB_HOST}
+      DB_NAME: ${DB_NAME}
+      SECRET_KEY: ${SECRET_KEY}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      PORT: ${PORT:-5000}
+      DEBUG: ${DEBUG:-False}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      CORS_ALLOW_HEADERS: ${CORS_ALLOW_HEADERS:-Authorization,Content-Type,Accept,Origin,X-Requested-With,Cache-Control,Pragma}
+      CORS_EXPOSE_HEADERS: ${CORS_EXPOSE_HEADERS:-Authorization,Content-Type}
+      CORS_METHODS: ${CORS_METHODS:-GET,POST,PUT,PATCH,DELETE,OPTIONS}
+      CORS_SUPPORTS_CREDENTIALS: ${CORS_SUPPORTS_CREDENTIALS:-false}
+      CORS_MAX_AGE: ${CORS_MAX_AGE:-86400}
     command: gunicorn --worker-class eventlet -w 1 -b 0.0.0.0:5000 "main:application"
     networks:
       - dokploy-network
