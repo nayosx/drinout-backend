@@ -11,6 +11,12 @@ from app.api.router import register_blueprints, register_sockets
 from app.extensions.db import db, init_db
 from app.extensions.socketio import socketio
 
+FIXED_CORS_ORIGINS = [
+    "https://laundry.drclin.website",
+    "https://drclin.website",
+    "http://localhost:4200",
+]
+
 
 def _load_local_env():
     env_path = Path(__file__).resolve().parent.parent / ".env"
@@ -51,7 +57,7 @@ def create_app():
 
     CORS(
         app,
-        resources={r"/*": {"origins": app.config["CORS_ORIGINS"]}},
+        resources={r"/*": {"origins": FIXED_CORS_ORIGINS}},
         allow_headers=app.config["CORS_ALLOW_HEADERS"],
         expose_headers=app.config["CORS_EXPOSE_HEADERS"],
         methods=app.config["CORS_METHODS"],
@@ -63,7 +69,7 @@ def create_app():
     @app.after_request
     def add_cors_headers(response):
         origin = request.headers.get("Origin")
-        allowed_origin = _resolve_cors_origin(origin, app.config["CORS_ORIGINS"])
+        allowed_origin = _resolve_cors_origin(origin, FIXED_CORS_ORIGINS)
         if not allowed_origin:
             return response
 
