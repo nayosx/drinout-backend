@@ -16,6 +16,7 @@ FIXED_CORS_ORIGINS = [
     "https://drclin.website",
     "http://localhost:4200",
 ]
+FIXED_CORS_METHODS = ["GET", "POST", "OPTIONS"]
 
 
 def _load_local_env():
@@ -42,6 +43,7 @@ def create_app():
     from app.config.settings import Config
 
     app = Flask(__name__)
+    app.url_map.strict_slashes = False
 
     app.config.from_object(Config)
 
@@ -60,7 +62,7 @@ def create_app():
         resources={r"/*": {"origins": FIXED_CORS_ORIGINS}},
         allow_headers=app.config["CORS_ALLOW_HEADERS"],
         expose_headers=app.config["CORS_EXPOSE_HEADERS"],
-        methods=app.config["CORS_METHODS"],
+        methods=FIXED_CORS_METHODS,
         supports_credentials=app.config["CORS_SUPPORTS_CREDENTIALS"],
         max_age=app.config["CORS_MAX_AGE"],
         vary_header=True,
@@ -75,7 +77,7 @@ def create_app():
 
         response.headers.setdefault("Access-Control-Allow-Origin", allowed_origin)
         response.headers.setdefault("Vary", "Origin")
-        response.headers.setdefault("Access-Control-Allow-Methods", ",".join(app.config["CORS_METHODS"]))
+        response.headers.setdefault("Access-Control-Allow-Methods", ",".join(FIXED_CORS_METHODS))
         response.headers.setdefault("Access-Control-Allow-Headers", ",".join(app.config["CORS_ALLOW_HEADERS"]))
         response.headers.setdefault("Access-Control-Expose-Headers", ",".join(app.config["CORS_EXPOSE_HEADERS"]))
         response.headers.setdefault("Access-Control-Max-Age", str(app.config["CORS_MAX_AGE"]))

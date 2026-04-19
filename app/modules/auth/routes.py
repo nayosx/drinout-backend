@@ -17,8 +17,11 @@ from schemas.user_schema import UserSchema
 auth_bp = Blueprint("auth_bp", __name__, url_prefix="/auth")
 
 
-@auth_bp.route("/login", methods=["POST"])
+@auth_bp.route("/login", methods=["POST", "OPTIONS"], strict_slashes=False)
 def login():
+    if request.method == "OPTIONS":
+        return "", 204
+
     data = request.get_json()
     if not data:
         return jsonify({"error": "No input data provided"}), 400
