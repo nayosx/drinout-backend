@@ -7,11 +7,18 @@ def _csv_env(name, default):
     return [item.strip() for item in raw_value.split(",") if item.strip()]
 
 
+def _require_env(name):
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
+
+
 class Config:
-    DB_USER = os.getenv("DB_USER", "my_user")
-    DB_PASS = os.getenv("DB_PASSWORD", "my_password")
-    DB_HOST = os.getenv("DB_HOST", "localhost")
-    DB_NAME = os.getenv("DB_NAME", "my_database")
+    DB_USER = _require_env("DB_USER")
+    DB_PASS = _require_env("DB_PASSWORD")
+    DB_HOST = _require_env("DB_HOST")
+    DB_NAME = _require_env("DB_NAME")
 
     SQLALCHEMY_DATABASE_URI = f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:3306/{DB_NAME}"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
