@@ -6,12 +6,12 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 
+load_dotenv(override=False)
+
 from app.api.router import register_blueprints, register_sockets
 from app.config.settings import Config
 from app.extensions.db import db, init_db
 from app.extensions.socketio import socketio
-
-load_dotenv(override=False)
 
 
 def _resolve_cors_origin(origin, allowed_origins):
