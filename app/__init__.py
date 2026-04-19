@@ -11,13 +11,6 @@ from app.api.router import register_blueprints, register_sockets
 from app.extensions.db import db, init_db
 from app.extensions.socketio import socketio
 
-FIXED_CORS_ORIGINS = [
-    "https://laundry.drclin.website",
-    "https://drclin.website",
-    "http://localhost:4200",
-]
-FIXED_CORS_METHODS = ["GET", "POST", "OPTIONS"]
-
 
 def _load_local_env():
     env_path = Path(__file__).resolve().parent.parent / ".env"
@@ -43,7 +36,6 @@ def create_app():
     from app.config.settings import Config
 
     app = Flask(__name__)
-    app.url_map.strict_slashes = False
 
     app.config.from_object(Config)
 
@@ -59,10 +51,10 @@ def create_app():
 
     CORS(
         app,
-        resources={r"/*": {"origins": FIXED_CORS_ORIGINS}},
+        resources={r"/*": {"origins": app.config["CORS_ORIGINS"]}},
         allow_headers=app.config["CORS_ALLOW_HEADERS"],
         expose_headers=app.config["CORS_EXPOSE_HEADERS"],
-        methods=FIXED_CORS_METHODS,
+        methods=app.config["CORS_METHODS"],
         supports_credentials=app.config["CORS_SUPPORTS_CREDENTIALS"],
         max_age=app.config["CORS_MAX_AGE"],
         vary_header=True,
@@ -71,13 +63,13 @@ def create_app():
     @app.after_request
     def add_cors_headers(response):
         origin = request.headers.get("Origin")
-        allowed_origin = _resolve_cors_origin(origin, FIXED_CORS_ORIGINS)
+        allowed_origin = _resolve_cors_origin(origin, app.config["CORS_ORIGINS"])
         if not allowed_origin:
             return response
 
         response.headers.setdefault("Access-Control-Allow-Origin", allowed_origin)
         response.headers.setdefault("Vary", "Origin")
-        response.headers.setdefault("Access-Control-Allow-Methods", ",".join(FIXED_CORS_METHODS))
+        response.headers.setdefault("Access-Control-Allow-Methods", ",".join(app.config["CORS_METHODS"]))
         response.headers.setdefault("Access-Control-Allow-Headers", ",".join(app.config["CORS_ALLOW_HEADERS"]))
         response.headers.setdefault("Access-Control-Expose-Headers", ",".join(app.config["CORS_EXPOSE_HEADERS"]))
         response.headers.setdefault("Access-Control-Max-Age", str(app.config["CORS_MAX_AGE"]))
