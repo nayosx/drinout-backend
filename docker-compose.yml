@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     working_dir: /app
     environment:
-      - FLASK_ENV=production
+      - FLASK_DEBUG=0
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
     command: gunicorn --worker-class eventlet -w 1 -b 0.0.0.0:5000 "main:application"
