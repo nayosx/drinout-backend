@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from flask import Flask, request
@@ -6,12 +7,18 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 
-load_dotenv(override=False)
-
 from app.api.router import register_blueprints, register_sockets
-from app.config.settings import Config
 from app.extensions.db import db, init_db
 from app.extensions.socketio import socketio
+
+
+def _load_local_env():
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if env_path.exists():
+        # Keep OS environment variables as the source of truth in production.
+        load_dotenv(env_path, override=False)
+        return str(env_path)
+    return None
 
 
 def _resolve_cors_origin(origin, allowed_origins):
@@ -25,15 +32,19 @@ def _resolve_cors_origin(origin, allowed_origins):
 
 
 def create_app():
+    local_env_path = _load_local_env()
+    from app.config.settings import Config
+
     app = Flask(__name__)
+
+    app.config.from_object(Config)
 
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
         print("DB_USER:", os.getenv("DB_USER"))
         print("DB_HOST:", os.getenv("DB_HOST"))
         print("DB_NAME:", os.getenv("DB_NAME"))
-        print("ENV FILE LOADED")
-
-    app.config.from_object(Config)
+        print("LOCAL_ENV_FILE:", local_env_path or "not found")
+        print("SQLALCHEMY_DB_HOST:", app.config["DB_HOST"])
 
     init_db(app)
     Migrate(app, db)
