@@ -61,6 +61,10 @@ def _next_pending_order():
     return (current_max or 0) + 1
 
 
+def _serialize_datetime(value):
+    return value.isoformat() if value else None
+
+
 def _emit_queue_for_status_and_all(socketio, statuses):
     if not socketio:
         return
@@ -591,12 +595,13 @@ def _build_summary_response(service, pricing_context="commercial"):
     return {
         "laundry_service": {
             "id": service.id,
-            "scheduled_pickup_at": service.scheduled_pickup_at.isoformat() if service.scheduled_pickup_at else None,
+            "scheduled_pickup_at": _serialize_datetime(service.scheduled_pickup_at),
             "status": service.status,
             "service_label": service.service_label,
             "fulfillment_type": service.fulfillment_type,
             "transaction_id": service.transaction_id,
             "notes": service.notes,
+            "updated_at": _serialize_datetime(service.updated_at),
         },
         "client": {
             "id": service.client.id if service.client else None,
@@ -1234,6 +1239,13 @@ def patch_header(service_id):
     if not json_data:
         return jsonify({"error": "No input data provided"}), 400
     current_user_id = get_jwt_identity()
+    expected_updated_at = json_data.get("expected_updated_at")
+    current_updated_at = _serialize_datetime(service.updated_at)
+
+    if not expected_updated_at or expected_updated_at != current_updated_at:
+        return jsonify({
+            "error": "Alguien mas ha editado esta orden de trabajo, por favor, refresca tu navegador"
+        }), 409
 
     service_label = json_data.get("service_label", service.service_label)
     fulfillment_type = json_data.get("fulfillment_type", service.fulfillment_type)
@@ -1266,6 +1278,7 @@ def patch_header(service_id):
             distance_km=distance_km,
             manual_delivery_fee=manual_delivery_fee,
         )
+        service.updated_at = func.now()
     except (ArithmeticError, ValueError) as exc:
         db.session.rollback()
         return jsonify({"error": str(exc)}), 400
@@ -1293,6 +1306,13 @@ def patch_commercial_detail(service_id):
     if not json_data:
         return jsonify({"error": "No input data provided"}), 400
     current_user_id = get_jwt_identity()
+    expected_updated_at = json_data.get("expected_updated_at")
+    current_updated_at = _serialize_datetime(service.updated_at)
+
+    if not expected_updated_at or expected_updated_at != current_updated_at:
+        return jsonify({
+            "error": "Alguien mas ha editado esta orden de trabajo, por favor, refresca tu navegador"
+        }), 409
 
     try:
         notes = json_data.get("notes")
@@ -1300,6 +1320,7 @@ def patch_commercial_detail(service_id):
             service.notes = notes
         _replace_manual_order_items(service, json_data)
         _replace_extras(service, json_data.get("extras"))
+        service.updated_at = func.now()
     except (ArithmeticError, ValueError) as exc:
         db.session.rollback()
         return jsonify({"error": str(exc)}), 400
