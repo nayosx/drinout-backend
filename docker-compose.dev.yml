@@ -2,22 +2,44 @@ name: drinout-dev
 
 services:
   drinout:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
     container_name: drinout-back-dev
+    # Mapeo de puerto para acceso por IP (http://10.10.10.2:5050)
     ports:
       - "5050:5050"
-    env_file:
-      - .env.dev
+    working_dir: /app
     volumes:
       - .:/app
-    working_dir: /app
     environment:
-      FLASK_APP: "main.py"
-      FLASK_ENV: "development"
-      FLASK_DEBUG: "1"
-      PORT: "5050"
-      PYTHONUNBUFFERED: "1"
-      PYTHONDONTWRITEBYTECODE: "1"
+      # Configuración específica de Dev
+      - FLASK_APP=main.py
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+      - PORT=5050
+      - DEBUG=True
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+
+      # Base de Datos y Seguridad (Valores tomados del panel de Dokploy)
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=${DB_HOST}
+      - DB_NAME=${DB_NAME}
+      - SECRET_KEY=${SECRET_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+
+      # Configuración de CORS para Dev
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - CORS_ALLOW_HEADERS=${CORS_ALLOW_HEADERS:-Authorization,Content-Type,Accept,Origin,X-Requested-With,Cache-Control,Pragma}
+      - CORS_EXPOSE_HEADERS=${CORS_EXPOSE_HEADERS:-Authorization,Content-Type}
+      - CORS_METHODS=${CORS_METHODS:-GET,POST,PUT,PATCH,DELETE,OPTIONS}
+      - CORS_SUPPORTS_CREDENTIALS=${CORS_SUPPORTS_CREDENTIALS:-false}
+      - CORS_MAX_AGE=86400
+
+    # Comando para recarga en caliente en desarrollo
     command: python3 main.py
     restart: unless-stopped
     healthcheck:
@@ -25,3 +47,9 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+    networks:
+      - dokploy-network
+
+networks:
+  dokploy-network:
+    external: true

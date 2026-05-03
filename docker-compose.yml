@@ -5,6 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: production
     working_dir: /app
     environment:
       FLASK_DEBUG: "0"
