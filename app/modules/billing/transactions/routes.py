@@ -10,6 +10,7 @@ from models.transaction_category import TransactionCategory
 from models.client import Client
 from schemas.transaction_schema import TransactionSchema
 from sqlalchemy.orm import joinedload
+from sqlalchemy.exc import IntegrityError
 
 transaction_bp = Blueprint("transaction_bp", __name__, url_prefix="/transactions")
 transaction_schema = TransactionSchema()
@@ -101,6 +102,16 @@ def create_transaction():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
+    idempotency_key = request.headers.get("Idempotency-Key")
+
+    if idempotency_key:
+        existing = Transaction.query.filter_by(idempotency_key=idempotency_key).first()
+        if existing:
+            return jsonify({
+                "message": "Transaction already processed",
+                "transaction": transaction_schema.dump(existing)
+            }), 200
+
     # Validar User
     user = User.query.get(data["user_id"])
     if not user:
@@ -134,11 +145,20 @@ def create_transaction():
         category_id=data.get("category_id") if data["transaction_type"] == "OUT" else None,
         client_id=client_id,
         detail=data.get("detail"),
-        amount=data["amount"]
+        amount=data["amount"],
+        idempotency_key=idempotency_key,
     )
 
     db.session.add(new_trans)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        existing = Transaction.query.filter_by(idempotency_key=idempotency_key).first()
+        return jsonify({
+            "message": "Transaction already processed",
+            "transaction": transaction_schema.dump(existing)
+        }), 200
 
     return jsonify({
         "message": "Transaction created",

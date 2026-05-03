@@ -19,6 +19,7 @@ class TransactionSchema(LocalDateTimeMixin, Schema):
     updated_at = fields.DateTime(dump_only=True)
     client_id = fields.Int(allow_none=True)
     client_name = fields.Str(allow_none=True)
+    idempotency_key = fields.Str(dump_only=True)
 
     user_name = fields.String(attribute="user.name")
     payment_type_name = fields.String(attribute="payment_type.name")

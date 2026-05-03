@@ -16,6 +16,7 @@ class Transaction(db.Model):
     created_at = Column(DateTime(True), default=func.now())
     updated_at = Column(DateTime(True), default=func.now(), onupdate=func.now())
     client_id = db.Column(db.Integer, db.ForeignKey("clients.id"), nullable=True)
+    idempotency_key = Column(String(64), nullable=True, unique=True)
 
     # Relaciones
     user = relationship("User", backref="transactions", lazy=True)
