@@ -38,7 +38,7 @@ class Config:
     CORS_ORIGINS = _csv_env("CORS_ORIGINS", "*")
     CORS_ALLOW_HEADERS = _csv_env(
         "CORS_ALLOW_HEADERS",
-        "Authorization,Content-Type,Accept,Origin,X-Requested-With,Cache-Control,Pragma",
+        "Authorization,Content-Type,Accept,Origin,X-Requested-With,Cache-Control,Pragma,Idempotency-Key",
     )
     CORS_EXPOSE_HEADERS = _csv_env(
         "CORS_EXPOSE_HEADERS",

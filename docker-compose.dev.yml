@@ -33,7 +33,7 @@ services:
 
       # Configuración de CORS para Dev
       - CORS_ORIGINS=${CORS_ORIGINS:-*}
-      - CORS_ALLOW_HEADERS=${CORS_ALLOW_HEADERS:-Authorization,Content-Type,Accept,Origin,X-Requested-With,Cache-Control,Pragma}
+      - CORS_ALLOW_HEADERS=${CORS_ALLOW_HEADERS:-Authorization,Content-Type,Accept,Origin,X-Requested-With,Cache-Control,Pragma,Idempotency-Key}
       - CORS_EXPOSE_HEADERS=${CORS_EXPOSE_HEADERS:-Authorization,Content-Type}
       - CORS_METHODS=${CORS_METHODS:-GET,POST,PUT,PATCH,DELETE,OPTIONS}
       - CORS_SUPPORTS_CREDENTIALS=${CORS_SUPPORTS_CREDENTIALS:-false}
