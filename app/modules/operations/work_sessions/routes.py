@@ -7,6 +7,7 @@ from models.work_session import WorkSession
 from schemas.work_session_schema import WorkSessionSchema
 from sqlalchemy.sql import func, text, case, cast
 from sqlalchemy import Date
+from sqlalchemy.exc import IntegrityError
 import csv
 from io import StringIO
 from utils.datetime_utils import LOCAL_TZ
@@ -61,34 +62,86 @@ def _local_date_range_to_utc(start_date_str, end_date_str):
 @jwt_required()
 def start_work_session():
     user_id = get_jwt_identity()
+    idempotency_key = request.headers.get("Idempotency-Key")
+
+    if idempotency_key:
+        existing = WorkSession.query.filter_by(idempotency_key=idempotency_key).first()
+        if existing:
+            return jsonify({
+                "message": "Jornada ya registrada",
+                "session": work_session_schema.dump(existing)
+            }), 200
+
     if WorkSession.query.filter_by(user_id=user_id, status="IN_PROGRESS").first():
         return jsonify({"message": "Ya tienes una jornada en curso."}), 400
 
-    new_session = WorkSession(user_id=user_id, login_time=datetime.utcnow().replace(microsecond=0))
+    new_session = WorkSession(
+        user_id=user_id,
+        login_time=datetime.utcnow().replace(microsecond=0),
+        idempotency_key=idempotency_key,
+    )
     db.session.add(new_session)
-    db.session.commit()
-    return jsonify({"message": "Jornada iniciada", "session": work_session_schema.dump(new_session)}), 201
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        existing = WorkSession.query.filter_by(idempotency_key=idempotency_key).first()
+        return jsonify({
+            "message": "Jornada ya registrada",
+            "session": work_session_schema.dump(existing)
+        }), 200
+
+    return jsonify({
+        "message": "Jornada iniciada",
+        "session": work_session_schema.dump(new_session)
+    }), 201
 
 @work_session_bp.route("/end", methods=["POST"])
 @jwt_required()
 def end_work_session():
     user_id = get_jwt_identity()
+    idempotency_key = request.headers.get("Idempotency-Key")
+
+    if idempotency_key:
+        existing = WorkSession.query.filter_by(idempotency_key=idempotency_key).first()
+        if existing and existing.status == "COMPLETED":
+            return jsonify({
+                "message": "Jornada ya finalizada",
+                "session": work_session_schema.dump(existing)
+            }), 200
+
     session = WorkSession.query.filter_by(user_id=user_id, status="IN_PROGRESS").first()
     if not session:
         return jsonify({"message": "No tienes una jornada activa."}), 400
 
     session.logout_time = datetime.utcnow().replace(microsecond=0)
     session.status = "COMPLETED"
+    session.idempotency_key = idempotency_key
     db.session.commit()
-    return jsonify({"message": "Jornada finalizada", "session": work_session_schema.dump(session)}), 200
+    return jsonify({
+        "message": "Jornada finalizada",
+        "session": work_session_schema.dump(session)
+    }), 200
 
 @work_session_bp.route("/force_end", methods=["POST"])
 @jwt_required()
 def force_end_work_session():
     user_id = request.json.get("user_id")
     comments = request.json.get("comments", "")
+    idempotency_key = request.headers.get("Idempotency-Key")
     if not user_id:
         return jsonify({"error": "user_id is required"}), 400
+
+    if idempotency_key:
+        existing = WorkSession.query.filter_by(
+            user_id=user_id,
+            idempotency_key=idempotency_key,
+        ).first()
+        if existing and existing.status == "COMPLETED":
+            return jsonify({
+                "message": "Work session already closed",
+                "session": work_session_schema.dump(existing)
+            }), 200
 
     session = WorkSession.query.filter_by(user_id=user_id, status="IN_PROGRESS").first()
     if not session:
@@ -97,6 +150,7 @@ def force_end_work_session():
     session.logout_time = datetime.utcnow().replace(microsecond=0)
     session.status = "COMPLETED"
     session.comments = comments
+    session.idempotency_key = idempotency_key
     db.session.commit()
     return jsonify({"message": "Work session forcibly closed", "session": work_session_schema.dump(session)}), 200
 

@@ -8,3 +8,4 @@ class WorkSessionSchema(LocalDateTimeMixin, Schema):
     logout_time = fields.DateTime(allow_none=True)
     status = fields.Str()
     comments = fields.Str(allow_none=True)
+    idempotency_key = fields.Str(dump_only=True)

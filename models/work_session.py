@@ -1,5 +1,5 @@
 from db import db
-from sqlalchemy import Column, Integer, ForeignKey, DateTime, Enum, Text, func
+from sqlalchemy import Column, Integer, ForeignKey, DateTime, Enum, Text, String, func
 from sqlalchemy.orm import relationship
 
 class WorkSession(db.Model):
@@ -11,6 +11,7 @@ class WorkSession(db.Model):
     logout_time = Column(DateTime, nullable=True)
     status = Column(Enum("IN_PROGRESS", "COMPLETED"), default="IN_PROGRESS", nullable=False)
     comments = Column(Text, nullable=True)
+    idempotency_key = Column(String(64), nullable=True, unique=True)
 
     user = relationship("User", backref="work_sessions")
 
