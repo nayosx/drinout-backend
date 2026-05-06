@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 from flask import Flask, request
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from flask_migrate import Migrate
 
 from app.api.router import register_blueprints, register_sockets
@@ -80,6 +82,13 @@ def create_app():
         return response
 
     JWTManager(app)
+
+    Limiter(
+        app,
+        key_func=get_remote_address,
+        default_limits=[app.config.get("RATELIMIT_DEFAULT", "100 per minute")],
+        storage_uri=app.config.get("RATELIMIT_STORAGE_URI", "memory://"),
+    )
 
     register_blueprints(app)
 

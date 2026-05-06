@@ -12,7 +12,10 @@ from app.modules.laundry.service_type_surcharge_rules import (
     resolve_laundry_service_type_surcharge,
 )
 from app.services.discount_rules import calculate_commercial_discount
-from app.services.weight_pricing import calculate_weight_service_quote
+from app.services.weight_pricing import (
+    calculate_weight_service_quote,
+    load_weight_pricing_config,
+)
 from db import db
 from models.catalog_service_legacy import CatalogServiceLegacy
 from models.client import Client, ClientAddress
@@ -127,30 +130,6 @@ def _service_query():
         selectinload(LaundryService.transaction),
         selectinload(LaundryService.created_by_user),
     )
-
-
-def _load_weight_pricing_config():
-    setting_keys = [
-        "laundry_weight_tier_1_max_lb",
-        "laundry_weight_tier_1_price",
-        "laundry_weight_tier_2_max_lb",
-        "laundry_weight_tier_2_price",
-        "laundry_weight_extra_lb_price",
-        "laundry_weight_min_price_no_services",
-    ]
-    rows = GlobalSetting.query.filter(
-        GlobalSetting.key.in_(setting_keys),
-        GlobalSetting.is_active.is_(True),
-    ).all()
-    by_key = {row.key: row.value for row in rows}
-    return {
-        "tier_1_max_lb": by_key.get("laundry_weight_tier_1_max_lb"),
-        "tier_1_price": by_key.get("laundry_weight_tier_1_price"),
-        "tier_2_max_lb": by_key.get("laundry_weight_tier_2_max_lb"),
-        "tier_2_price": by_key.get("laundry_weight_tier_2_price"),
-        "extra_lb_price": by_key.get("laundry_weight_extra_lb_price"),
-        "min_price_no_services": by_key.get("laundry_weight_min_price_no_services"),
-    }
 
 
 def _load_delivery_price_per_km():
@@ -877,7 +856,7 @@ def _build_weight_order_item(laundry_service_id, weight_payload, has_other_servi
     quote = calculate_weight_service_quote(
         weight_lb=weight_lb,
         has_other_services=has_other_services,
-        pricing_config=_load_weight_pricing_config(),
+        pricing_config=load_weight_pricing_config(),
     )
     final_price = _as_money(quote["summary"]["final_price"])
     return OrderItem(
@@ -1127,7 +1106,7 @@ def quote_weight_service():
         result = calculate_weight_service_quote(
             weight_lb=weight_lb,
             has_other_services=has_other_services,
-            pricing_config=_load_weight_pricing_config(),
+            pricing_config=load_weight_pricing_config(),
         )
     except (ArithmeticError, ValueError) as exc:
         return jsonify({"error": str(exc)}), 400

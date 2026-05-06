@@ -29,6 +29,7 @@ from app.modules.catalogs.legacy.routes import (
     catalog_services_bp,
     service_variants_bp,
 )
+from app.modules.public.routes import public_bp
 
 from app.modules.laundry.queue.socket import register_laundry_queue_socket
 
@@ -61,6 +62,7 @@ def register_blueprints(app):
     app.register_blueprint(service_categories_bp)
     app.register_blueprint(catalog_services_bp)
     app.register_blueprint(service_variants_bp)
+    app.register_blueprint(public_bp)
 
 
 def register_sockets(socketio):
