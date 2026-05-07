@@ -55,11 +55,10 @@ def create_app():
         allowed_origins = app.config["CORS_ORIGINS"]
         allowed_origin = _resolve_cors_origin(origin, allowed_origins)
 
-        if allowed_origin:
-            response.headers["Access-Control-Allow-Origin"] = allowed_origin
-        elif "*" in allowed_origins:
-            response.headers["Access-Control-Allow-Origin"] = "*"
+        if not allowed_origin:
+            return response
 
+        response.headers["Access-Control-Allow-Origin"] = allowed_origin
         response.headers["Vary"] = "Origin"
         response.headers["Access-Control-Allow-Methods"] = ",".join(app.config["CORS_METHODS"])
         response.headers["Access-Control-Allow-Headers"] = ",".join(app.config["CORS_ALLOW_HEADERS"])
@@ -68,6 +67,9 @@ def create_app():
 
         if app.config["CORS_SUPPORTS_CREDENTIALS"]:
             response.headers["Access-Control-Allow-Credentials"] = "true"
+
+        if request.method == "OPTIONS":
+            response.status_code = 200
 
         return response
 
