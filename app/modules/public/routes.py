@@ -1,6 +1,4 @@
 from flask import Blueprint, jsonify, request
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 
 from app.services.weight_pricing import (
     calculate_weight_service_quote,
@@ -9,15 +7,8 @@ from app.services.weight_pricing import (
 
 public_bp = Blueprint("public_bp", __name__, url_prefix="/public")
 
-limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=["100 per minute"],
-    storage_uri="memory://",
-)
-
 
 @public_bp.route("/weight-quote", methods=["GET"])
-@limiter.limit("100 per minute")
 def public_weight_quote():
     weight_lb = request.args.get("weight_lb", type=float)
     has_other_services_raw = request.args.get("has_other_services", default="false", type=str)
