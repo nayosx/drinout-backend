@@ -76,8 +76,8 @@ def create_app():
     JWTManager(app)
 
     Limiter(
-        app,
         key_func=get_remote_address,
+        app=app,
         default_limits=[app.config.get("RATELIMIT_DEFAULT", "100 per minute")],
         storage_uri=app.config.get("RATELIMIT_STORAGE_URI", "memory://"),
     )
