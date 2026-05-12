@@ -1,15 +1,17 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 from sqlalchemy import or_, func
 import re
 from db import db
 from models.client import Client, ClientPhone
+from models.transaction import Transaction
 from schemas.client_schema import (
     ClientSchema,
     ClientShortSchema,
     ClientDetailSchema
 )
+from schemas.transaction_schema import TransactionSchema
 
 clients_bp = Blueprint("clients_bp", __name__, url_prefix="/clients")
 
@@ -17,6 +19,7 @@ client_schema = ClientSchema()
 client_short_list_schema = ClientShortSchema(many=True)
 client_detail_schema = ClientDetailSchema()
 client_detail_list_schema = ClientDetailSchema(many=True)
+transaction_schema = TransactionSchema()
 
 def apply_common_filters(query, q):
     if q:
@@ -113,6 +116,31 @@ def get_client(client_id):
     if client.is_deleted:
         return jsonify({"error": "Client not found"}), 404
     return jsonify(client_detail_schema.dump(client)), 200
+
+@clients_bp.route("/<int:client_id>/last-transaction", methods=["GET"])
+@jwt_required()
+def get_client_last_transaction(client_id):
+    client = Client.query.get_or_404(client_id)
+    if client.is_deleted:
+        return jsonify({"error": "Client not found"}), 404
+
+    transaction = (
+        Transaction.query
+        .options(
+            joinedload(Transaction.client),
+            joinedload(Transaction.category),
+            joinedload(Transaction.payment_type),
+            joinedload(Transaction.user)
+        )
+        .filter_by(client_id=client_id, transaction_type="IN")
+        .order_by(Transaction.created_at.desc())
+        .first()
+    )
+
+    if not transaction:
+        return jsonify({"message": "No transactions found for this client"}), 404
+
+    return jsonify(transaction_schema.dump(transaction)), 200
 
 @clients_bp.route("", methods=["POST"])
 @jwt_required()
