@@ -1,7 +1,7 @@
-from marshmallow import Schema, fields
-from schemas.base import LocalDateTimeMixin
+from marshmallow import fields
+from schemas.base import BaseSchema
 
-class RefreshTokenSchema(LocalDateTimeMixin, Schema):
+class RefreshTokenSchema(BaseSchema):
     id = fields.Int(dump_only=True)
     jti = fields.Str()
     user_id = fields.Int()

@@ -1,10 +1,10 @@
 # schemas/transaction_schema.py
 
-from marshmallow import Schema, fields, validate
+from marshmallow import fields, validate
 from models.transaction import Transaction
-from schemas.base import LocalDateTimeMixin
+from schemas.base import BaseSchema
 
-class TransactionSchema(LocalDateTimeMixin, Schema):
+class TransactionSchema(BaseSchema):
     id = fields.Int(dump_only=True)
     user_id = fields.Int(required=True)
     transaction_type = fields.Str(

@@ -1,10 +1,10 @@
-from marshmallow import Schema, fields, validate
-from schemas.base import LocalDateTimeMixin
+from marshmallow import fields, validate
+from schemas.base import BaseSchema
 
 SURCHARGE_TYPES = ["PERCENT", "FIXED"]
 
 
-class PaymentTypeSchema(LocalDateTimeMixin, Schema):
+class PaymentTypeSchema(BaseSchema):
     id = fields.Int(dump_only=True)
     code = fields.Str(required=True, validate=validate.Length(min=1, max=50))
     name = fields.Str(required=True, validate=validate.Length(min=1, max=100))

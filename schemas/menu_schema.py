@@ -1,7 +1,7 @@
-from marshmallow import Schema, fields
-from schemas.base import LocalDateTimeMixin
+from marshmallow import fields
+from schemas.base import BaseSchema
 
-class MenuSchema(LocalDateTimeMixin, Schema):
+class MenuSchema(BaseSchema):
     id = fields.Int(dump_only=True)
     key = fields.Str()
     label = fields.Str()

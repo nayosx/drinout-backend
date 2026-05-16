@@ -1,6 +1,6 @@
 from marshmallow import Schema, fields, validate
 
-from schemas.base import LocalDateTimeMixin
+from schemas.base import BaseSchema
 from schemas.client_schema import ClientDetailSchema, ClientAddressNoUpdateSchema
 from schemas.transaction_schema import TransactionSchema
 from schemas.user_schema import UserSchema
@@ -36,7 +36,7 @@ class LaundryServiceV2UpsertSchema(Schema):
     notes = fields.Str(allow_none=True)
 
 
-class LaundryServiceV2Schema(LocalDateTimeMixin, Schema):
+class LaundryServiceV2Schema(BaseSchema):
     id = fields.Int(dump_only=True)
     client_id = fields.Int(required=True)
     client_address_id = fields.Int(required=True)

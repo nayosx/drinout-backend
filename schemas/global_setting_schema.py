@@ -1,13 +1,13 @@
-from marshmallow import Schema, fields, validate
+from marshmallow import fields, validate
 
-from schemas.base import LocalDateTimeMixin
+from schemas.base import BaseSchema
 from models.global_setting import GLOBAL_SETTING_CATEGORIES
 
 
 GLOBAL_SETTING_VALUE_TYPES = ["STRING", "DECIMAL", "INT", "BOOL", "JSON"]
 
 
-class GlobalSettingSchema(LocalDateTimeMixin, Schema):
+class GlobalSettingSchema(BaseSchema):
     id = fields.Int(dump_only=True)
     key = fields.Str(required=True, validate=validate.Length(min=1, max=100))
     name = fields.Str(required=True, validate=validate.Length(min=1, max=120))

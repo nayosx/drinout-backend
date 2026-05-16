@@ -1,8 +1,8 @@
-from marshmallow import Schema, fields
-from schemas.base import LocalDateTimeMixin
+from marshmallow import fields
+from schemas.base import BaseSchema
 
 
-class TaskSchema(LocalDateTimeMixin, Schema):
+class TaskSchema(BaseSchema):
     id = fields.Int(dump_only=True)
     user_id = fields.Int(required=True)
     work_session_id = fields.Int(allow_none=True)
@@ -11,7 +11,7 @@ class TaskSchema(LocalDateTimeMixin, Schema):
     updated_at = fields.DateTime(dump_only=True)
     user_name = fields.String(attribute="user.name")
 
-class TaskViewSchema(LocalDateTimeMixin, Schema):
+class TaskViewSchema(BaseSchema):
     id = fields.Int(dump_only=True)
     task_id = fields.Int(required=True)
     user_id = fields.Int(required=True)

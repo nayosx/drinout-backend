@@ -1,7 +1,7 @@
-from marshmallow import Schema, fields
-from schemas.base import LocalDateTimeMixin
+from marshmallow import fields
+from schemas.base import BaseSchema
 
-class LaundryDeliverySchema(LocalDateTimeMixin, Schema):
+class LaundryDeliverySchema(BaseSchema):
     id = fields.Int(dump_only=True)
     laundry_service_id = fields.Int(required=True)
     manager_id = fields.Int(required=True)

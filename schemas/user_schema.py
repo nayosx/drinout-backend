@@ -1,9 +1,9 @@
 # schemas/user_schema.py
-from marshmallow import Schema, fields, validate
+from marshmallow import fields, validate
 from models.user import User
-from schemas.base import LocalDateTimeMixin
+from schemas.base import BaseSchema
 
-class UserSchema(LocalDateTimeMixin, Schema):
+class UserSchema(BaseSchema):
     id = fields.Int(dump_only=True)
     username = fields.Str(
         required=True,

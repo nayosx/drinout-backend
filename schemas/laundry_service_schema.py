@@ -1,5 +1,5 @@
-from marshmallow import Schema, fields, validate
-from schemas.base import LocalDateTimeMixin
+from marshmallow import fields, validate
+from schemas.base import BaseSchema
 
 from schemas.client_schema import ClientDetailSchema, ClientShortSchema, ClientWithPhonesSchema
 from schemas.client_schema import ClientAddressNoUpdateSchema
@@ -10,7 +10,7 @@ from schemas.user_schema import UserSchema
 FULFILLMENT_TYPES = ["WALK_IN", "DELIVERY", "PICKUP_DELIVERY"]
 
 
-class LaundryServiceSchema(LocalDateTimeMixin, Schema):
+class LaundryServiceSchema(BaseSchema):
     id = fields.Int(dump_only=True)
 
     client_id = fields.Int(required=True)

@@ -1,7 +1,7 @@
-from marshmallow import Schema, fields
-from schemas.base import LocalDateTimeMixin
+from marshmallow import fields
+from schemas.base import BaseSchema
 
-class DeliveryStatusLogSchema(LocalDateTimeMixin, Schema):
+class DeliveryStatusLogSchema(BaseSchema):
     id = fields.Int(dump_only=True)
     dispatch_id = fields.Int(required=True)
     status = fields.Str(required=True)

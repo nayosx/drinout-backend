@@ -1,9 +1,9 @@
-from marshmallow import Schema, fields, validate
+from marshmallow import fields, validate
 
-from schemas.base import LocalDateTimeMixin
+from schemas.base import BaseSchema
 
 
-class ClientServiceTypeSurchargeRuleSchema(LocalDateTimeMixin, Schema):
+class ClientServiceTypeSurchargeRuleSchema(BaseSchema):
     id = fields.Int(dump_only=True)
     client_id = fields.Int(required=True)
     service_label = fields.Str(

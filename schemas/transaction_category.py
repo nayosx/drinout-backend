@@ -1,7 +1,7 @@
-from marshmallow import Schema, fields
-from schemas.base import LocalDateTimeMixin
+from marshmallow import fields
+from schemas.base import BaseSchema
 
-class TransactionCategorySchema(LocalDateTimeMixin, Schema):
+class TransactionCategorySchema(BaseSchema):
     id = fields.Int(dump_only=True)
     category_name = fields.Str(required=True)
     created_at = fields.DateTime(dump_only=True)

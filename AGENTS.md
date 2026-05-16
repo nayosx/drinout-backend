@@ -34,6 +34,21 @@
 - Ask only when ambiguity blocks a safe or correct implementation.
 - When modifying shared logic, consider side effects across related modules.
 
+## Schema Conventions
+- Todo schema con campos DateTime debe heredar de `BaseSchema` (`schemas/base.py`).
+- `BaseSchema` incluye manejo automatico de timezone:
+  - `@pre_load`: normaliza fechas entrantes a UTC naive (naive = hora local).
+  - `@post_dump`: convierte UTC -> hora local en serializacion.
+- Flujo completo: frontend envia naive local -> `@pre_load` normaliza a UTC -> DB almacena UTC naive -> respuesta con hora local y offset correcto (ej. `-06:00`).
+- Timezone configurable via `.env` `TIMEZONE` (default: `America/El_Salvador`).
+- **Patron para nuevos schemas**:
+  ```python
+  from schemas.base import BaseSchema
+
+  class MyModuleSchema(BaseSchema):
+      some_date = fields.DateTime()
+  ```
+
 ## Verification
 - When possible, validate changes using local functional checks, targeted tests, or startup/build checks.
 - Do not invest time in test suites unless explicitly requested.
