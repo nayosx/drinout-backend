@@ -115,28 +115,17 @@ def get_laundry_delivery(delivery_id):
 
     status_logs = DeliveryStatusLog.query.filter_by(dispatch_id=delivery.id).order_by(DeliveryStatusLog.logged_at.desc()).all()
 
-    result = {
-        "id": delivery.id,
-        "laundry_service_id": delivery.laundry_service_id,
-        "scheduled_departure_time": delivery.scheduled_departure_time,
-        "actual_departure_time": delivery.actual_departure_time,
-        "customer_expected_time": delivery.customer_expected_time,
-        "actual_delivery_time": delivery.actual_delivery_time,
-        "status": delivery.status,
-        "notes": delivery.notes,
-        "created_at": delivery.created_at,
-        "updated_at": delivery.updated_at,
-        "service": {
-            "id": service.id,
-            "status": service.status,
-            "service_label": service.service_label
-        } if service else None,
-        "client": client_schema.dump(client) if client else None,
-        "transaction": transaction_schema.dump(transaction) if transaction else None,
-        "manager": user_schema.dump(manager) if manager else None,
-        "driver": user_schema.dump(driver) if driver else None,
-        "status_logs": log_schema_list.dump(status_logs)
-    }
+    result = schema.dump(delivery)
+    result["service"] = {
+        "id": service.id,
+        "status": service.status,
+        "service_label": service.service_label
+    } if service else None
+    result["client"] = client_schema.dump(client) if client else None
+    result["transaction"] = transaction_schema.dump(transaction) if transaction else None
+    result["manager"] = user_schema.dump(manager) if manager else None
+    result["driver"] = user_schema.dump(driver) if driver else None
+    result["status_logs"] = log_schema_list.dump(status_logs)
 
     return jsonify(result), 200
 
