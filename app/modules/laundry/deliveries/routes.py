@@ -1,17 +1,22 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from db import db
+from datetime import datetime
 from models.laundry_delivery import LaundryDelivery
 from models.laundry_service import LaundryService
+from models.delivery_status_log import DeliveryStatusLog
 from app.modules.laundry.queue.events import emit_queue_updated
 from schemas.client_schema import ClientDetailSchema
 from schemas.laundry_delivery_schema import LaundryDeliverySchema
+from schemas.delivery_status_log_schema import DeliveryStatusLogSchema
 from schemas.transaction_schema import TransactionSchema
 from schemas.user_schema import UserSchema
 
 laundry_delivery_bp = Blueprint("laundry_delivery_bp", __name__, url_prefix="/laundry_deliveries")
 schema = LaundryDeliverySchema()
 schema_list = LaundryDeliverySchema(many=True)
+log_schema = DeliveryStatusLogSchema()
+log_schema_list = DeliveryStatusLogSchema(many=True)
 
 transaction_schema = TransactionSchema()
 user_schema = UserSchema()
@@ -54,12 +59,20 @@ def _emit_queue_for_status_and_all(socketio, statuses):
         )
 
 
+def _log_status_change(dispatch_id, status):
+    log = DeliveryStatusLog(dispatch_id=dispatch_id, status=status)
+    db.session.add(log)
+    return log
+
+
 @laundry_delivery_bp.route("", methods=["GET"])
 @jwt_required()
 def get_all():
     page = request.args.get("page", default=1, type=int)
     per_page = request.args.get("per_page", default=10, type=int)
     laundry_service_id = request.args.get("laundry_service_id", type=int)
+    manager_id = request.args.get("manager_id", type=int)
+    driver_id = request.args.get("driver_id", type=int)
     status = request.args.get("status")
     from_date = request.args.get("from_date")
     to_date = request.args.get("to_date")
@@ -68,12 +81,16 @@ def get_all():
 
     if laundry_service_id:
         query = query.filter(LaundryDelivery.laundry_service_id == laundry_service_id)
+    if manager_id:
+        query = query.filter(LaundryDelivery.manager_id == manager_id)
+    if driver_id:
+        query = query.filter(LaundryDelivery.driver_id == driver_id)
     if status:
         query = query.filter(LaundryDelivery.status == status)
     if from_date:
-        query = query.filter(LaundryDelivery.scheduled_delivery_at >= from_date)
+        query = query.filter(LaundryDelivery.scheduled_departure_time >= from_date)
     if to_date:
-        query = query.filter(LaundryDelivery.scheduled_delivery_at <= to_date)
+        query = query.filter(LaundryDelivery.scheduled_departure_time <= to_date)
 
     pagination = query.order_by(LaundryDelivery.id.desc()).paginate(page=page, per_page=per_page, error_out=False)
 
@@ -93,15 +110,20 @@ def get_laundry_delivery(delivery_id):
     service = delivery.laundry_service
     client = service.client if service else None
     transaction = service.transaction if service else None
-    created_by = delivery.created_by_user
-    assigned_to = delivery.assigned_to_user
+    manager = delivery.manager
+    driver = delivery.driver
+
+    status_logs = DeliveryStatusLog.query.filter_by(dispatch_id=delivery.id).order_by(DeliveryStatusLog.logged_at.desc()).all()
 
     result = {
         "id": delivery.id,
-        "scheduled_delivery_at": delivery.scheduled_delivery_at,
-        "delivered_at": delivery.delivered_at,
+        "laundry_service_id": delivery.laundry_service_id,
+        "scheduled_departure_time": delivery.scheduled_departure_time,
+        "actual_departure_time": delivery.actual_departure_time,
+        "customer_expected_time": delivery.customer_expected_time,
+        "actual_delivery_time": delivery.actual_delivery_time,
         "status": delivery.status,
-        "cancel_note": delivery.cancel_note,
+        "notes": delivery.notes,
         "created_at": delivery.created_at,
         "updated_at": delivery.updated_at,
         "service": {
@@ -111,8 +133,9 @@ def get_laundry_delivery(delivery_id):
         } if service else None,
         "client": client_schema.dump(client) if client else None,
         "transaction": transaction_schema.dump(transaction) if transaction else None,
-        "created_by": user_schema.dump(created_by) if created_by else None,
-        "assigned_to": user_schema.dump(assigned_to) if assigned_to else None
+        "manager": user_schema.dump(manager) if manager else None,
+        "driver": user_schema.dump(driver) if driver else None,
+        "status_logs": log_schema_list.dump(status_logs)
     }
 
     return jsonify(result), 200
@@ -132,16 +155,35 @@ def create():
     if not service:
         return jsonify({"error": "LaundryService not found"}), 404
 
+    if service.status != "READY_FOR_DELIVERY":
+        return jsonify({
+            "error": f"LaundryService must be READY_FOR_DELIVERY to create a dispatch (current: {service.status})"
+        }), 422
+
+    manager_id = data.get("manager_id", current_user_id)
+
+    # Idempotencia: si ya existe un dispatch activo para este servicio, retornarlo
+    existing = LaundryDelivery.query.filter(
+        LaundryDelivery.laundry_service_id == data["laundry_service_id"],
+        LaundryDelivery.status.in_(["ASSIGNED", "EN_ROUTE"])
+    ).first()
+
+    if existing:
+        print(f"[AUDIT] LaundryDelivery {existing.id} returned as existing for service {data['laundry_service_id']}")
+        return jsonify(schema.dump(existing)), 200
+
     item = LaundryDelivery(
         laundry_service_id=data["laundry_service_id"],
-        created_by_user_id=current_user_id,
-        assigned_to_user_id=data.get("assigned_to_user_id"),
-        scheduled_delivery_at=data["scheduled_delivery_at"],
-        delivered_at=data.get("delivered_at"),
-        status="PENDING",
-        cancel_note=data.get("cancel_note")
+        manager_id=manager_id,
+        driver_id=data["driver_id"],
+        scheduled_departure_time=data["scheduled_departure_time"],
+        customer_expected_time=data["customer_expected_time"],
+        status="ASSIGNED"
     )
     db.session.add(item)
+    db.session.flush()  # get item.id before commit
+
+    _log_status_change(item.id, "ASSIGNED")
     db.session.commit()
 
     socketio = _get_socketio()
@@ -171,14 +213,14 @@ def update(item_id):
             return jsonify({"error": "LaundryService not found"}), 404
         item.laundry_service_id = data["laundry_service_id"]
 
-    if "assigned_to_user_id" in data:
-        item.assigned_to_user_id = data["assigned_to_user_id"]
-    if "scheduled_delivery_at" in data:
-        item.scheduled_delivery_at = data["scheduled_delivery_at"]
-    if "delivered_at" in data:
-        item.delivered_at = data["delivered_at"]
-    if "cancel_note" in data:
-        item.cancel_note = data["cancel_note"]
+    if "driver_id" in data:
+        item.driver_id = data["driver_id"]
+    if "scheduled_departure_time" in data:
+        item.scheduled_departure_time = data["scheduled_departure_time"]
+    if "customer_expected_time" in data:
+        item.customer_expected_time = data["customer_expected_time"]
+    if "notes" in data:
+        item.notes = data["notes"]
 
     db.session.commit()
 
@@ -218,23 +260,106 @@ def update_status(item_id):
     if not json_data or "status" not in json_data:
         return jsonify({"error": "Missing 'status' in request"}), 400
 
-    valid_statuses = ["PENDING", "DELIVERED", "CANCELLED"]
+    valid_statuses = ["ASSIGNED", "EN_ROUTE", "DELIVERED", "REJECTED"]
     new_status = json_data["status"]
 
     if new_status not in valid_statuses:
         return jsonify({"error": f"Invalid status. Valid options: {valid_statuses}"}), 400
 
-    item.status = new_status
-    if new_status == "DELIVERED":
-        from datetime import datetime
-        item.delivered_at = datetime.utcnow()
+    # Notas opcional
+    notes = json_data.get("notes")
+    if notes is not None:
+        item.notes = notes
 
+    # Idempotencia: si ya está en el estado deseado con los efectos secundarios aplicados
+    if new_status == item.status:
+        if new_status == "EN_ROUTE" and item.actual_departure_time is not None:
+            return jsonify(schema.dump(item)), 200
+        if new_status == "DELIVERED" and item.actual_delivery_time is not None:
+            return jsonify(schema.dump(item)), 200
+
+    if new_status == "EN_ROUTE":
+        # Solo una entrega activa por driver
+        existing_active = LaundryDelivery.query.filter(
+            LaundryDelivery.driver_id == item.driver_id,
+            LaundryDelivery.status == "EN_ROUTE",
+            LaundryDelivery.id != item.id
+        ).first()
+
+        if existing_active:
+            return jsonify({
+                "error": f"El repartidor ya tiene una entrega en curso (dispatch #{existing_active.id}). Debe completarla o rechazarla primero."
+            }), 409
+
+        item.actual_departure_time = datetime.utcnow()
+    elif new_status == "DELIVERED":
+        item.actual_delivery_time = datetime.utcnow()
+        if service:
+            service.status = "DELIVERED"
+    elif new_status == "REJECTED":
+        if service:
+            service.status = "READY_FOR_DELIVERY"
+
+    item.status = new_status
+    _log_status_change(item.id, new_status)
     db.session.commit()
 
     socketio = _get_socketio()
     if socketio:
         _emit_queue_for_status_and_all(socketio, statuses=[service_status])
+        if service:
+            _emit_queue_for_status_and_all(socketio, statuses=[service.status])
 
     current_user_id = get_jwt_identity()
     print(f"[AUDIT] LaundryDelivery {item.id} status changed to {new_status} by user {current_user_id}")
     return jsonify(schema.dump(item)), 200
+
+
+@laundry_delivery_bp.route("/<int:dispatch_id>/status-logs", methods=["GET"])
+@jwt_required()
+def get_status_logs(dispatch_id):
+    logs = DeliveryStatusLog.query.filter_by(dispatch_id=dispatch_id).order_by(DeliveryStatusLog.logged_at.desc()).all()
+    return jsonify({"items": log_schema_list.dump(logs)}), 200
+
+
+@laundry_delivery_bp.route("/metrics", methods=["GET"])
+@jwt_required()
+def get_metrics():
+    driver_id = request.args.get("driver_id", type=int)
+    date_from = request.args.get("date_from")
+    date_to = request.args.get("date_to")
+
+    query = LaundryDelivery.query.filter(LaundryDelivery.status == "DELIVERED")
+
+    if driver_id:
+        query = query.filter(LaundryDelivery.driver_id == driver_id)
+    if date_from:
+        query = query.filter(LaundryDelivery.actual_delivery_time >= date_from)
+    if date_to:
+        query = query.filter(LaundryDelivery.actual_delivery_time <= date_to)
+
+    results = query.order_by(LaundryDelivery.actual_delivery_time.desc()).all()
+
+    metrics = []
+    for d in results:
+        service = d.laundry_service
+        client = service.client if service else None
+        metrics.append({
+            "dispatch_id": d.id,
+            "laundry_service_id": d.laundry_service_id,
+            "client_name": client.name if client else None,
+            "driver_reaction_minutes": (
+                (d.actual_departure_time - d.scheduled_departure_time).total_seconds() / 60
+                if d.actual_departure_time and d.scheduled_departure_time else None
+            ),
+            "customer_delay_minutes": (
+                (d.actual_delivery_time - d.customer_expected_time).total_seconds() / 60
+                if d.actual_delivery_time and d.customer_expected_time else None
+            ),
+            "time_on_road_minutes": (
+                (d.actual_delivery_time - d.actual_departure_time).total_seconds() / 60
+                if d.actual_delivery_time and d.actual_departure_time else None
+            )
+        })
+
+    return jsonify({"items": metrics}), 200

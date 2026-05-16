@@ -17,6 +17,7 @@ from .refresh_token import RefreshToken
 from .user_shortcut import UserShortcut
 from .laundry_service import LaundryService
 from .laundry_delivery import LaundryDelivery
+from .delivery_status_log import DeliveryStatusLog
 from .laundry_activity_log import LaundryActivityLog
 from .garment_type import GarmentType
 from .global_setting import GlobalSetting
