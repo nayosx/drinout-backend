@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from db import db
-from datetime import datetime
+from datetime import datetime, timedelta
 from models.laundry_delivery import LaundryDelivery
 from models.laundry_service import LaundryService
 from models.delivery_status_log import DeliveryStatusLog
@@ -90,7 +90,8 @@ def get_all():
     if from_date:
         query = query.filter(LaundryDelivery.scheduled_departure_time >= from_date)
     if to_date:
-        query = query.filter(LaundryDelivery.scheduled_departure_time <= to_date)
+        to_date_parsed = datetime.strptime(to_date, '%Y-%m-%d') + timedelta(days=1)
+        query = query.filter(LaundryDelivery.scheduled_departure_time < to_date_parsed)
 
     pagination = query.order_by(LaundryDelivery.id.desc()).paginate(page=page, per_page=per_page, error_out=False)
 
@@ -325,7 +326,8 @@ def get_metrics():
     if date_from:
         query = query.filter(LaundryDelivery.actual_delivery_time >= date_from)
     if date_to:
-        query = query.filter(LaundryDelivery.actual_delivery_time <= date_to)
+        date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d') + timedelta(days=1)
+        query = query.filter(LaundryDelivery.actual_delivery_time < date_to_parsed)
 
     results = query.order_by(LaundryDelivery.actual_delivery_time.desc()).all()
 

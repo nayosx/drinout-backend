@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import func
 from db import db
+from datetime import datetime, timedelta
 from app.modules.laundry.service_type_surcharge_rules import (
     resolve_client_service_type_surcharge,
     resolve_laundry_service_type_surcharge,
@@ -206,7 +207,8 @@ def get_all():
     if from_date:
         query = query.filter(LaundryService.scheduled_pickup_at >= from_date)
     if to_date:
-        query = query.filter(LaundryService.scheduled_pickup_at <= to_date)
+        to_date_parsed = datetime.strptime(to_date, '%Y-%m-%d') + timedelta(days=1)
+        query = query.filter(LaundryService.scheduled_pickup_at < to_date_parsed)
 
     if status:
         query = query.order_by(LaundryService.scheduled_pickup_at.asc())
