@@ -58,3 +58,5 @@ class Config:
 
     RATELIMIT_DEFAULT = os.getenv("RATELIMIT_DEFAULT", "100 per minute")
     RATELIMIT_STORAGE_URI = os.getenv("RATELIMIT_STORAGE_URI", "memory://")
+
+    TIMEZONE = os.getenv("TIMEZONE", "America/El_Salvador")

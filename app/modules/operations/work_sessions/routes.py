@@ -10,7 +10,7 @@ from sqlalchemy import Date
 from sqlalchemy.exc import IntegrityError
 import csv
 from io import StringIO
-from utils.datetime_utils import LOCAL_TZ
+from utils.datetime_utils import localize_naive
 
 work_session_bp = Blueprint("work_session_bp", __name__, url_prefix="/work_sessions")
 work_session_schema = WorkSessionSchema()
@@ -50,8 +50,8 @@ def _local_date_range_to_utc(start_date_str, end_date_str):
         hour=23, minute=59, second=59, microsecond=999999
     )
 
-    start_local = LOCAL_TZ.localize(start_local_naive)
-    end_local = LOCAL_TZ.localize(end_local_naive)
+    start_local = localize_naive(start_local_naive)
+    end_local = localize_naive(end_local_naive)
 
     start_utc = start_local.astimezone(timezone.utc).replace(tzinfo=None)
     end_utc = end_local.astimezone(timezone.utc).replace(tzinfo=None)
