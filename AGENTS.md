@@ -7,6 +7,17 @@
 - Before modifying shared logic, evaluate impact across `app`, `models`, `schemas`, `utils`, and any request/DB flow that depends on them.
 - Development database credentials are stored in the local `.env` file for this repository. Check `.env` before doing local DB connectivity work.
 
+## Code Comprehension with CodeGraph
+This project uses CodeGraph (tree-sitter-parsed knowledge graph). Trust its structural queries over text search.
+
+- **Prefer `codegraph_search`** over `grep` when looking up symbols by name. It is faster, accurate, and returns kind + location + signature.
+- **Use `codegraph_context`** instead of chaining `codegraph_search` + `codegraph_node`. One call covers both.
+- **Trust CodeGraph results**. Do not re-verify with `grep` — that is slower, less accurate, and wastes context.
+- **Reserve `codegraph_explore`** for deep dives into unfamiliar modules. It is token-heavy; use with care.
+- **Check `codegraph_impact`** before modifying shared logic to evaluate side effects across related modules.
+- **Be aware of index lag**. The file watcher debounces ~500ms. Do not re-query immediately after editing a file in the same turn.
+- **Check `codegraph_status`** before long exploration sessions to ensure the index is healthy.
+
 ## Working Preferences
 - Do not spend time on unit tests unless explicitly requested.
 - For maintenance or adjustments, prioritize implementation and functional validation over test coverage.
@@ -33,6 +44,7 @@
 - If ambiguity is minor, infer from existing project patterns.
 - Ask only when ambiguity blocks a safe or correct implementation.
 - When modifying shared logic, consider side effects across related modules.
+- Before modifying shared logic, run `codegraph_impact` on the target symbol to evaluate side effects.
 
 ## Schema Conventions
 - Todo schema con campos DateTime debe heredar de `BaseSchema` (`schemas/base.py`).
