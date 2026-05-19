@@ -159,8 +159,17 @@ def create():
     ).first()
 
     if existing:
-        print(f"[AUDIT] LaundryDelivery {existing.id} returned as existing for service {data['laundry_service_id']}")
-        return jsonify(schema.dump(existing)), 200
+        if existing.scheduled_departure_time and existing.scheduled_departure_time.date() < datetime.utcnow().date():
+            # Entrega antigua de fecha pasada — cerrarla automáticamente
+            existing.status = "REJECTED"
+            existing.notes = "Close by system"
+            _log_status_change(existing.id, "REJECTED")
+            service.status = "READY_FOR_DELIVERY"
+            print(f"[AUDIT] LaundryDelivery {existing.id} auto-closed for service {data['laundry_service_id']}")
+            # Continuar para crear la nueva entrega
+        else:
+            print(f"[AUDIT] LaundryDelivery {existing.id} returned as existing for service {data['laundry_service_id']}")
+            return jsonify(schema.dump(existing)), 200
 
     item = LaundryDelivery(
         laundry_service_id=data["laundry_service_id"],
