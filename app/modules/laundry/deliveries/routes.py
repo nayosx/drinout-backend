@@ -145,9 +145,9 @@ def create():
     if not service:
         return jsonify({"error": "LaundryService not found"}), 404
 
-    if service.status != "READY_FOR_DELIVERY":
+    if service.status not in ["PENDING", "READY_FOR_DELIVERY"]:
         return jsonify({
-            "error": f"LaundryService must be READY_FOR_DELIVERY to create a dispatch (current: {service.status})"
+            "error": f"LaundryService must be PENDING or READY_FOR_DELIVERY to create a dispatch (current: {service.status})"
         }), 422
 
     manager_id = data.get("manager_id", current_user_id)
@@ -161,10 +161,15 @@ def create():
     if existing:
         if existing.scheduled_departure_time and existing.scheduled_departure_time.date() < datetime.utcnow().date():
             # Entrega antigua de fecha pasada — cerrarla automáticamente
-            existing.status = "REJECTED"
+            if existing.status == "EN_ROUTE":
+                existing.status = "DELIVERED"
+                existing.actual_delivery_time = datetime.utcnow()
+                if service and service.status == "READY_FOR_DELIVERY":
+                    service.status = "DELIVERED"
+            else:
+                existing.status = "REJECTED"
             existing.notes = "Close by system"
-            _log_status_change(existing.id, "REJECTED")
-            service.status = "READY_FOR_DELIVERY"
+            _log_status_change(existing.id, existing.status)
             print(f"[AUDIT] LaundryDelivery {existing.id} auto-closed for service {data['laundry_service_id']}")
             # Continuar para crear la nueva entrega
         else:
@@ -293,11 +298,10 @@ def update_status(item_id):
         item.actual_departure_time = datetime.utcnow()
     elif new_status == "DELIVERED":
         item.actual_delivery_time = datetime.utcnow()
-        if service:
+        if service and service.status == "READY_FOR_DELIVERY":
             service.status = "DELIVERED"
     elif new_status == "REJECTED":
-        if service:
-            service.status = "READY_FOR_DELIVERY"
+        pass
 
     item.status = new_status
     _log_status_change(item.id, new_status)
