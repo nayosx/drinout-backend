@@ -212,6 +212,7 @@ def create():
         driver_id=data["driver_id"],
         scheduled_departure_time=data["scheduled_departure_time"],
         customer_expected_time=data["customer_expected_time"],
+        notes=data.get("notes"),
         status="ASSIGNED"
     )
     db.session.add(item)
@@ -300,10 +301,13 @@ def update_status(item_id):
     if new_status not in valid_statuses:
         return jsonify({"error": f"Invalid status. Valid options: {valid_statuses}"}), 400
 
-    # Notas opcional
+    # Notas opcional: se apendiza si ya existen notas previas (p.ej. del manager)
     notes = json_data.get("notes")
     if notes is not None:
-        item.notes = notes
+        if item.notes and item.notes.strip():
+            item.notes = f"{item.notes}\n\n--- Nota del repartidor ---\n{notes}"
+        else:
+            item.notes = notes
 
     # Idempotencia: si ya está en el estado deseado con los efectos secundarios aplicados
     if new_status == item.status:
