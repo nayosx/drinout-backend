@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from db import db
 from datetime import datetime, timedelta
+from sqlalchemy.orm import selectinload
 from models.laundry_delivery import LaundryDelivery
 from models.laundry_service import LaundryService
 from models.delivery_status_log import DeliveryStatusLog
@@ -78,8 +79,17 @@ def get_all():
     status = request.args.get("status")
     from_date = request.args.get("from_date")
     to_date = request.args.get("to_date")
+    format = request.args.get("format")
 
     query = LaundryDelivery.query
+
+    if format == "detailed":
+        query = query.options(
+            selectinload(LaundryDelivery.laundry_service).selectinload(LaundryService.client),
+            selectinload(LaundryDelivery.laundry_service).selectinload(LaundryService.transaction),
+            selectinload(LaundryDelivery.manager),
+            selectinload(LaundryDelivery.driver),
+        )
 
     if laundry_service_id:
         query = query.filter(LaundryDelivery.laundry_service_id == laundry_service_id)
@@ -97,8 +107,26 @@ def get_all():
 
     pagination = query.order_by(LaundryDelivery.id.desc()).paginate(page=page, per_page=per_page, error_out=False)
 
+    if format == "detailed":
+        items = []
+        for delivery in pagination.items:
+            item = schema.dump(delivery)
+            service = delivery.laundry_service
+            item["service"] = {
+                "id": service.id,
+                "status": service.status,
+                "service_label": service.service_label
+            } if service else None
+            item["client"] = client_schema.dump(service.client) if service and service.client else None
+            item["transaction"] = transaction_schema.dump(service.transaction) if service and service.transaction else None
+            item["manager"] = user_manager_schema.dump(delivery.manager) if delivery.manager else None
+            item["driver"] = user_driver_schema.dump(delivery.driver) if delivery.driver else None
+            items.append(item)
+    else:
+        items = schema_list.dump(pagination.items)
+
     return jsonify({
-        "items": schema_list.dump(pagination.items),
+        "items": items,
         "total": pagination.total,
         "page": pagination.page,
         "per_page": pagination.per_page,
