@@ -6,11 +6,11 @@ from models.laundry_delivery import LaundryDelivery
 from models.laundry_service import LaundryService
 from models.delivery_status_log import DeliveryStatusLog
 from app.modules.laundry.queue.events import emit_queue_updated
-from schemas.client_schema import ClientDetailSchema
+from schemas.client_schema import ClientDetailSchema, ClientDispatchSchema
 from schemas.laundry_delivery_schema import LaundryDeliverySchema
 from schemas.delivery_status_log_schema import DeliveryStatusLogSchema
 from schemas.transaction_schema import TransactionSchema
-from schemas.user_schema import UserSchema
+from schemas.user_schema import UserSchema, UserDriverDispatchSchema, UserManagerDispatchSchema
 
 laundry_delivery_bp = Blueprint("laundry_delivery_bp", __name__, url_prefix="/laundry_deliveries")
 schema = LaundryDeliverySchema()
@@ -20,7 +20,9 @@ log_schema_list = DeliveryStatusLogSchema(many=True)
 
 transaction_schema = TransactionSchema()
 user_schema = UserSchema()
-client_schema = ClientDetailSchema()
+client_schema = ClientDispatchSchema()
+user_driver_schema = UserDriverDispatchSchema()
+user_manager_schema = UserManagerDispatchSchema()
 
 
 def _get_socketio():
@@ -124,8 +126,8 @@ def get_laundry_delivery(delivery_id):
     } if service else None
     result["client"] = client_schema.dump(client) if client else None
     result["transaction"] = transaction_schema.dump(transaction) if transaction else None
-    result["manager"] = user_schema.dump(manager) if manager else None
-    result["driver"] = user_schema.dump(driver) if driver else None
+    result["manager"] = user_manager_schema.dump(manager) if manager else None
+    result["driver"] = user_driver_schema.dump(driver) if driver else None
     result["status_logs"] = log_schema_list.dump(status_logs)
 
     return jsonify(result), 200

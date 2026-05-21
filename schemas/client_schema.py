@@ -103,3 +103,33 @@ class ClientWithPhonesSchema(BaseSchema):
     document_id = fields.Str()
     is_deleted = fields.Bool()
     phones = fields.Nested(ClientPhoneNoUpdateSchema, many=True)
+
+
+# ----------------------------
+# Direccion ligera para detalle de despacho
+# ----------------------------
+class ClientAddressDispatchSchema(BaseSchema):
+    id = fields.Int(dump_only=True)
+    address_text = fields.Str()
+    latitude = fields.Decimal(as_string=True)
+    longitude = fields.Decimal(as_string=True)
+    map_link = fields.Str()
+
+
+# ----------------------------
+# Telefono ligero para detalle de despacho
+# ----------------------------
+class ClientPhoneDispatchSchema(BaseSchema):
+    id = fields.Int(dump_only=True)
+    phone_number = fields.Str()
+
+
+# ----------------------------
+# Cliente ligero para detalle de despacho (dispatch)
+# ----------------------------
+class ClientDispatchSchema(BaseSchema):
+    id = fields.Int(dump_only=True)
+    name = fields.Str()
+    is_deleted = fields.Bool()
+    addresses = fields.Nested(ClientAddressDispatchSchema, many=True)
+    phones = fields.Nested(ClientPhoneDispatchSchema, many=True)

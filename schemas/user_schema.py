@@ -25,3 +25,15 @@ class UserSchema(BaseSchema):
         required=True,
         validate=validate.Length(min=6, max=20)
     )
+
+
+class UserDriverDispatchSchema(BaseSchema):
+    name = fields.Str()
+    phone = fields.Str()
+    role_id = fields.Int()
+    username = fields.Str()
+
+
+class UserManagerDispatchSchema(BaseSchema):
+    name = fields.Str()
+    phone = fields.Str()
