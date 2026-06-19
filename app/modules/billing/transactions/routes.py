@@ -138,7 +138,8 @@ def _local_utc_offset_string():
 
 
 def _local_created_at_expression():
-    dialect = db.session.bind.dialect.name
+    bind = db.session.get_bind(mapper=Transaction.__mapper__)
+    dialect = bind.dialect.name if bind is not None else None
     offset = _local_utc_offset_string()
 
     if dialect == "mysql":
