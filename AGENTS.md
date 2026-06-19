@@ -23,6 +23,8 @@ This project uses CodeGraph (tree-sitter-parsed knowledge graph). Trust its stru
 - For maintenance or adjustments, prioritize implementation and functional validation over test coverage.
 - Avoid unnecessary changes outside the requested scope.
 - Do not refactor working code purely for style.
+- If user explicitly asks to read/query/inspect database or requests live DB information, use `octo_db` first instead of starting with `codegraph` or code review.
+- If user does not explicitly ask for live DB reads, continue with normal tool selection and use `octo_db` only when actual database state is needed.
 
 ## Backend Guidelines
 - Maintain consistency between routes, schemas, models, and persistence logic.
